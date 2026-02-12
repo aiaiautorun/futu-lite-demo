@@ -67,6 +67,7 @@
         .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
 
         @media (max-width: 768px) {
+            .kbd-hint { display: none; }
             .hamburger { display: block; }
             body { overflow-y: auto; height: auto; min-height: 100vh; }
             aside { display: none; position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 100; }
@@ -92,9 +93,10 @@
         <button class="hamburger" id="hamburger" aria-label="選股列表">☰</button>
         <div class="logo">
             <div class="logo-icon">牛</div>
-            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.1 RWD</span></span>
+            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.2</span></span>
         </div>
         <div class="status">
+            <span style="color:#4b5563;font-size:10px;margin-right:8px;" class="kbd-hint">↑↓ 切換 · 1/2/3 分頁</span>
             <div class="dot"></div> LIVE
         </div>
     </header>
@@ -760,6 +762,28 @@
                 overlay.classList.remove('open');
             }
         };
+
+        // === Keyboard Navigation ===
+        document.addEventListener('keydown', (e) => {
+            const filtered = activeFilter === 'all' ? stocks : stocks.filter(s => s.market === activeFilter);
+            const idx = filtered.findIndex(s => s.id === activeStock.id);
+            if (idx < 0) return;
+            if (e.key === 'ArrowDown' || e.key === 'j') {
+                e.preventDefault();
+                const next = (idx + 1) % filtered.length;
+                switchStock(filtered[next]);
+            } else if (e.key === 'ArrowUp' || e.key === 'k') {
+                e.preventDefault();
+                const prev = (idx - 1 + filtered.length) % filtered.length;
+                switchStock(filtered[prev]);
+            } else if (e.key === '1') {
+                document.querySelector('[data-filter="tw"]').click();
+            } else if (e.key === '2') {
+                document.querySelector('[data-filter="us"]').click();
+            } else if (e.key === '3') {
+                document.querySelector('[data-filter="all"]').click();
+            }
+        });
 
         // === Init ===
         switchStock(stocks[0]);
