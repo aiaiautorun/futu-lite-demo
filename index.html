@@ -164,6 +164,7 @@
         let activeStock = stocks[0];
         let activeFilter = 'tw';
         let charts = {};
+        let activeCandles = {};
 
         // === CTS (Composite Trend Score) Algorithm ===
         // Based on MA 三階動能: Direction + Slope + Acceleration
@@ -412,7 +413,7 @@
         function generateAIScore(stock) { return generateCTS(stock); }
 
         // === Chart Data Generation ===
-        function generateOHLC(stock, suffix, count, intervalSec) {
+        function generateOHLC(stock, suffix, count, intervalSec, currentPrice) {
             const rng = seededRandom(hashStr(stock.id + '_' + suffix));
             const data = [];
             const volumeData = [];
@@ -421,12 +422,22 @@
             let price = stock.basePrice * (0.9 + rng() * 0.2);
 
             for (let i = 0; i < count; i++) {
-                const open = price;
-                const change = (rng() - 0.48 + stock.trend) * stock.volatility;
-                const close = price * (1 + change);
-                const high = Math.max(open, close) * (1 + rng() * 0.008);
-                const low = Math.min(open, close) * (1 - rng() * 0.008);
-                const vol = (rng() * 8000 + 2000) * (stock.basePrice / 100);
+                let open = price;
+                let change = (rng() - 0.48 + stock.trend) * stock.volatility;
+                let close = price * (1 + change);
+
+                // Force last candle to match current price
+                if (i === count - 1 && currentPrice !== undefined) {
+                    close = currentPrice;
+                }
+
+                let high = Math.max(open, close) * (1 + rng() * 0.008);
+                let low = Math.min(open, close) * (1 - rng() * 0.008);
+                
+                if (close > high) high = close;
+                if (close < low) low = close;
+
+                let vol = (rng() * 8000 + 2000) * (stock.basePrice / 100);
 
                 data.push({ time: time + i * intervalSec, open, high, low, close });
                 volumeData.push({
@@ -500,9 +511,16 @@
             destroyCharts();
 
             // Generate data for 3 timeframes
-            const daily = generateOHLC(stock, 'daily', 120, 86400);
-            const hourly = generateOHLC(stock, '1h', 100, 3600);
-            const min15 = generateOHLC(stock, '15m', 100, 900);
+            const daily = generateOHLC(stock, 'daily', 120, 86400, stock.price);
+            const hourly = generateOHLC(stock, '1h', 100, 3600, stock.price);
+            const min15 = generateOHLC(stock, '15m', 100, 900, stock.price);
+
+            // Save last candles for live updates
+            activeCandles = {
+                daily: daily.data[daily.data.length - 1],
+                '1h': hourly.data[hourly.data.length - 1],
+                '15m': min15.data[min15.data.length - 1]
+            };
 
             charts.daily = createChart('chart-daily', daily.data, daily.volumeData, daily.maData, true);
             charts['1h'] = createChart('chart-1h', hourly.data, hourly.volumeData, hourly.maData, false);
@@ -593,6 +611,20 @@
             toUpdate.forEach(s => {
                 const oldPrice = s.price;
                 s.price += (Math.random() - 0.48 + s.trend) * s.volatility * s.price * 0.1;
+
+                // Update charts if this is the active stock
+                if (s.id === activeStock.id) {
+                    ['daily', '1h', '15m'].forEach(tf => {
+                        if (charts[tf] && activeCandles[tf]) {
+                            const bar = activeCandles[tf];
+                            bar.close = s.price;
+                            if (s.price > bar.high) bar.high = s.price;
+                            if (s.price < bar.low) bar.low = s.price;
+                            charts[tf].series.update(bar);
+                        }
+                    });
+                }
+
                 const priceEl = document.getElementById('price-' + s.id);
                 const changeEl = document.getElementById('change-' + s.id);
                 const rowEl = document.getElementById('row-' + s.id);
