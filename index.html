@@ -449,12 +449,10 @@
             keys.forEach((k, i) => {
                 const [dx, dy] = pt(angles[i], R * metrics[k] / 100);
                 grid += `<circle cx="${dx}" cy="${dy}" r="2.5" fill="rgb(${color})"/>`;
-                const [lx, ly] = pt(angles[i], R + 14);
-                grid += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="9">${labels[i]}</text>`;
-                const [vx, vy] = pt(angles[i], R + 23);
-                grid += `<text x="${vx}" y="${vy}" text-anchor="middle" dominant-baseline="middle" fill="#d1d5db" font-size="8" font-weight="bold">${metrics[k]}</text>`;
+                const [lx, ly] = pt(angles[i], R + 12);
+                grid += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="8">${labels[i]}<tspan fill="#d1d5db" font-weight="bold"> ${metrics[k]}</tspan></text>`;
             });
-            return `<svg viewBox="0 0 160 155" style="width:140px;height:135px;margin:2px 0;">${grid}</svg>`;
+            return `<svg viewBox="0 0 160 150" style="width:130px;height:120px;margin:2px 0;">${grid}</svg>`;
         }
 
         // Multi-timeframe resonance: combine 3 CTS results
