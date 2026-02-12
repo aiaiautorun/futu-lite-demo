@@ -166,21 +166,41 @@
         let charts = {};
 
         // === AI Score Generation ===
+        // Each stock has a unique but consistent profile based on its characteristics
+        const stockProfiles = {
+            '2330': { score: 92, chip: 95, tech: 90, sent: 78 },  // 台積電 - 龍頭強勢
+            '2317': { score: 71, chip: 68, tech: 72, sent: 65 },  // 鴻海
+            '2454': { score: 85, chip: 88, tech: 82, sent: 72 },  // 聯發科 - AI概念強
+            '2308': { score: 76, chip: 74, tech: 78, sent: 62 },  // 台達電
+            '2881': { score: 58, chip: 52, tech: 55, sent: 60 },  // 富邦金 - 金融股偏保守
+            '2882': { score: 55, chip: 48, tech: 52, sent: 58 },  // 國泰金
+            '2603': { score: 42, chip: 38, tech: 35, sent: 45 },  // 長榮 - 航運走弱
+            '3711': { score: 73, chip: 70, tech: 75, sent: 65 },  // 日月光投控
+            '2412': { score: 62, chip: 58, tech: 55, sent: 70 },  // 中華電 - 穩定但不強
+            '2886': { score: 60, chip: 55, tech: 58, sent: 62 },  // 兆豐金
+            '3037': { score: 83, chip: 85, tech: 80, sent: 68 },  // 欣興 - ABF載板強
+            '2303': { score: 68, chip: 65, tech: 70, sent: 55 },  // 聯電
+            'NVDA': { score: 95, chip: 92, tech: 95, sent: 85 },  // 輝達 - AI王者
+            'TSLA': { score: 64, chip: 58, tech: 60, sent: 72 },  // 特斯拉 - 波動大
+            'AAPL': { score: 78, chip: 75, tech: 80, sent: 70 },  // 蘋果
+        };
+
         function generateAIScore(stock) {
-            const rng = seededRandom(hashStr(stock.id + '_ai'));
-            const baseScore = Math.round(40 + rng() * 55); // 40-95
-            const chip = Math.round(30 + rng() * 70);
-            const tech = Math.round(25 + rng() * 75);
-            const sentiment = Math.round(20 + rng() * 80);
-            
-            // Adjust by trend
-            const trendBonus = stock.trend > 0.001 ? 10 : stock.trend > 0 ? 5 : stock.trend > -0.001 ? 0 : -8;
-            const score = Math.min(99, Math.max(10, baseScore + trendBonus));
-            
-            const labels = (v) => v >= 70 ? '強勢' : v >= 40 ? '中立' : '弱勢';
-            const techLabels = (v) => v >= 70 ? '多頭' : v >= 40 ? '盤整' : '空頭';
-            const sentLabels = (v) => v >= 65 ? '樂觀' : v >= 35 ? '中立' : '悲觀';
-            
+            const p = stockProfiles[stock.id] || { score: 50, chip: 50, tech: 50, sent: 50 };
+            // Add small seeded variance so it's not too static
+            const rng = seededRandom(hashStr(stock.id + '_ai_v2'));
+            const jitter = () => Math.round((rng() - 0.5) * 6);
+            const clamp = (v) => Math.min(99, Math.max(5, v));
+
+            const chip = clamp(p.chip + jitter());
+            const tech = clamp(p.tech + jitter());
+            const sentiment = clamp(p.sent + jitter());
+            const score = clamp(p.score + jitter());
+
+            const labels = (v) => v >= 70 ? '強勢' : v >= 45 ? '中立' : '弱勢';
+            const techLabels = (v) => v >= 70 ? '多頭' : v >= 45 ? '盤整' : '空頭';
+            const sentLabels = (v) => v >= 65 ? '樂觀' : v >= 40 ? '中立' : '悲觀';
+
             return {
                 score,
                 chip: { value: chip, label: labels(chip) },
