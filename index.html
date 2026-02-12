@@ -63,26 +63,45 @@
         .flash-up { animation: flashUp 0.5s; }
         .flash-down { animation: flashDown 0.5s; }
 
+        .hamburger { display: none; background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 4px 8px; }
+        .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
+
         @media (max-width: 768px) {
-            aside { display: none; }
-            main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr 1fr auto; }
+            .hamburger { display: block; }
+            body { overflow-y: auto; height: auto; min-height: 100vh; }
+            aside { display: none; position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 100; }
+            aside.open { display: flex; }
+            .mobile-overlay.open { display: block; }
+            main { grid-template-columns: 1fr; grid-template-rows: 240px 240px 240px auto; min-height: calc(100vh - 48px); }
+            .ai-panel { min-height: 320px; padding: 16px; }
+            .score { font-size: 56px; }
+            .panel-header .badge { font-size: 10px; padding: 2px 5px; }
+            header { padding: 0 10px; }
+        }
+
+        @media (max-width: 480px) {
+            main { grid-template-rows: 200px 200px 200px auto; }
+            .score { font-size: 48px; }
+            .ai-panel { min-height: 280px; }
         }
     </style>
 </head>
 <body>
 
     <header>
+        <button class="hamburger" id="hamburger" aria-label="選股列表">☰</button>
         <div class="logo">
             <div class="logo-icon">牛</div>
-            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.0 六維雷達圖</span></span>
+            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.1 RWD</span></span>
         </div>
         <div class="status">
             <div class="dot"></div> LIVE
         </div>
     </header>
 
+    <div class="mobile-overlay" id="mobile-overlay"></div>
     <div class="main-container">
-        <aside>
+        <aside id="sidebar">
             <div class="tabs">
                 <div class="tab active" data-filter="tw">台股</div>
                 <div class="tab" data-filter="us">美股</div>
@@ -721,6 +740,26 @@
                 }
             });
         }, 500);
+
+        // === Mobile Sidebar Toggle ===
+        const hamburger = document.getElementById('hamburger');
+        const sidebar = document.getElementById('sidebar');
+        const overlay = document.getElementById('mobile-overlay');
+        function toggleSidebar() {
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('open');
+        }
+        hamburger.addEventListener('click', toggleSidebar);
+        overlay.addEventListener('click', toggleSidebar);
+        // Close sidebar on stock select (mobile)
+        const origSwitch = switchStock;
+        switchStock = function(stock) {
+            origSwitch(stock);
+            if (window.innerWidth <= 768) {
+                sidebar.classList.remove('open');
+                overlay.classList.remove('open');
+            }
+        };
 
         // === Init ===
         switchStock(stocks[0]);
