@@ -74,7 +74,7 @@
     <header>
         <div class="logo">
             <div class="logo-icon">牛</div>
-            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v0.5 Stable</span></span>
+            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v0.6 CTS</span></span>
         </div>
         <div class="status">
             <div class="dot"></div> LIVE
@@ -165,37 +165,134 @@
         let activeFilter = 'tw';
         let charts = {};
 
-        // === AI Score Generation ===
-        // Each stock has a unique but consistent profile based on its characteristics
-        const stockProfiles = {
-            '2330': { score: 92, chip: 95, tech: 90, sent: 78 },  // 台積電 - 龍頭強勢
-            '2317': { score: 71, chip: 68, tech: 72, sent: 65 },  // 鴻海
-            '2454': { score: 85, chip: 88, tech: 82, sent: 72 },  // 聯發科 - AI概念強
-            '2308': { score: 76, chip: 74, tech: 78, sent: 62 },  // 台達電
-            '2881': { score: 58, chip: 52, tech: 55, sent: 60 },  // 富邦金 - 金融股偏保守
-            '2882': { score: 55, chip: 48, tech: 52, sent: 58 },  // 國泰金
-            '2603': { score: 42, chip: 38, tech: 35, sent: 45 },  // 長榮 - 航運走弱
-            '3711': { score: 73, chip: 70, tech: 75, sent: 65 },  // 日月光投控
-            '2412': { score: 62, chip: 58, tech: 55, sent: 70 },  // 中華電 - 穩定但不強
-            '2886': { score: 60, chip: 55, tech: 58, sent: 62 },  // 兆豐金
-            '3037': { score: 83, chip: 85, tech: 80, sent: 68 },  // 欣興 - ABF載板強
-            '2303': { score: 68, chip: 65, tech: 70, sent: 55 },  // 聯電
-            'NVDA': { score: 95, chip: 92, tech: 95, sent: 85 },  // 輝達 - AI王者
-            'TSLA': { score: 64, chip: 58, tech: 60, sent: 72 },  // 特斯拉 - 波動大
-            'AAPL': { score: 78, chip: 75, tech: 80, sent: 70 },  // 蘋果
-        };
+        // === CTS (Composite Trend Score) Algorithm ===
+        // Based on MA 三階動能: Direction + Slope + Acceleration
+        // Using tanh normalization to 0-100, with ATR & Volume weights
 
-        function generateAIScore(stock) {
-            const p = stockProfiles[stock.id] || { score: 50, chip: 50, tech: 50, sent: 50 };
-            // Add small seeded variance so it's not too static
-            const rng = seededRandom(hashStr(stock.id + '_ai_v2'));
-            const jitter = () => Math.round((rng() - 0.5) * 6);
-            const clamp = (v) => Math.min(99, Math.max(5, v));
+        function scoreTanh(x, scale) {
+            if (scale <= 0) scale = 1;
+            return 50 + 50 * Math.tanh(x / scale);
+        }
 
-            const chip = clamp(p.chip + jitter());
-            const tech = clamp(p.tech + jitter());
-            const sentiment = clamp(p.sent + jitter());
-            const score = clamp(p.score + jitter());
+        function regressionSlope(arr, n) {
+            if (n < 2) return 0;
+            let sumx = 0, sumy = 0, sumxy = 0, sumxx = 0;
+            for (let i = 0; i < n; i++) {
+                sumx += i; sumy += arr[i]; sumxy += i * arr[i]; sumxx += i * i;
+            }
+            const denom = n * sumxx - sumx * sumx;
+            if (Math.abs(denom) < 1e-12) return 0;
+            return (n * sumxy - sumx * sumy) / denom;
+        }
+
+        function calcATRWeight(atrArr, n) {
+            if (n < 2) return 1;
+            let sum = 0;
+            for (let i = 0; i < n; i++) sum += atrArr[i];
+            const avg = sum / n;
+            if (avg < 1e-9) return 1;
+            const w = 1 + Math.tanh((atrArr[0] - avg) / avg);
+            return Math.max(0.5, Math.min(1.5, w));
+        }
+
+        function calcVolWeight(volArr, n) {
+            if (n < 2) return 1;
+            let sum = 0;
+            for (let i = 0; i < n; i++) sum += volArr[i];
+            const avg = sum / n;
+            if (avg < 1e-9) return 1;
+            const slope = regressionSlope(volArr, n);
+            const w = 1 + Math.tanh(slope / avg);
+            return Math.max(0.5, Math.min(1.5, w));
+        }
+
+        function calcOneMAScore(maArr, n, atrArr, nATR, volArr, nVol) {
+            if (n < 3) return { score: 50, acc: 0 };
+            const dir = maArr[0] - maArr[1];
+            const ds = scoreTanh(dir, 0.8);
+            const slopeNow = regressionSlope(maArr, n);
+            const slopePrev = regressionSlope(maArr.slice(1), n - 1);
+            const ss = scoreTanh(slopeNow, 0.4);
+            const acc = slopeNow - slopePrev;
+            const as = scoreTanh(acc, 0.2);
+            let base = (ds + ss + as) / 3;
+            const wATR = calcATRWeight(atrArr, nATR);
+            const wVol = calcVolWeight(volArr, nVol);
+            let final = base * wATR * wVol;
+            return { score: Math.max(0, Math.min(100, final)), acc };
+        }
+
+        // Generate CTS from stock's OHLCV data
+        function generateCTS(stock) {
+            const rng = seededRandom(hashStr(stock.id + '_cts'));
+            const count = 120;
+            // Generate price series
+            let price = stock.basePrice * (0.9 + rng() * 0.2);
+            const closes = [], highs = [], lows = [], volumes = [];
+            for (let i = 0; i < count; i++) {
+                const open = price;
+                const change = (rng() - 0.48 + stock.trend) * stock.volatility;
+                const close = price * (1 + change);
+                const high = Math.max(open, close) * (1 + rng() * 0.008);
+                const low = Math.min(open, close) * (1 - rng() * 0.008);
+                const vol = (rng() * 8000 + 2000) * (stock.basePrice / 100);
+                closes.push(close); highs.push(high); lows.push(low); volumes.push(vol);
+                price = close;
+            }
+
+            // Build newest-first arrays from end of series
+            const N = 20; // window
+            const newestCloses = closes.slice(-N).reverse();
+
+            // Compute SMA series (newest first)
+            function buildSMA(period, len) {
+                const result = [];
+                for (let i = 0; i < len && i + period <= closes.length; i++) {
+                    const start = closes.length - 1 - i - period + 1;
+                    if (start < 0) break;
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) sum += closes[start + j];
+                    result.push(sum / period);
+                }
+                return result;
+            }
+
+            const ma5 = buildSMA(5, 5);
+            const ma10 = buildSMA(10, 5);
+            const ma20 = buildSMA(20, 5);
+
+            // ATR (True Range) newest-first
+            const atrArr = [];
+            for (let i = 0; i < 14 && closes.length - 1 - i > 0; i++) {
+                const idx = closes.length - 1 - i;
+                const tr = Math.max(
+                    highs[idx] - lows[idx],
+                    Math.abs(highs[idx] - closes[idx - 1]),
+                    Math.abs(lows[idx] - closes[idx - 1])
+                );
+                atrArr.push(tr);
+            }
+
+            // Volume newest-first
+            const volArr = volumes.slice(-14).reverse();
+
+            // Calculate MA scores
+            const s5 = calcOneMAScore(ma5, ma5.length, atrArr, atrArr.length, volArr, volArr.length);
+            const s10 = calcOneMAScore(ma10, ma10.length, atrArr, atrArr.length, volArr, volArr.length);
+            const s20 = calcOneMAScore(ma20, ma20.length, atrArr, atrArr.length, volArr, volArr.length);
+
+            // CTS2 = weighted combination
+            const cts2 = s5.score * 0.5 + s10.score * 0.3 + s20.score * 0.2;
+
+            // Derive sub-indicators from the MA scores
+            // 籌碼面 (chip) ≈ volume-weighted momentum
+            const chipScore = Math.max(0, Math.min(100, s5.score * 0.6 + s10.score * 0.4));
+            // 技術面 (tech) ≈ MA trend alignment
+            const techScore = Math.max(0, Math.min(100, s10.score * 0.5 + s20.score * 0.5));
+            // 市場情緒 ≈ short-term acceleration
+            const sentScore = Math.max(0, Math.min(100, scoreTanh(s5.acc * 10, 0.5)));
+
+            const score = Math.round(Math.max(5, Math.min(99, cts2)));
 
             const labels = (v) => v >= 70 ? '強勢' : v >= 45 ? '中立' : '弱勢';
             const techLabels = (v) => v >= 70 ? '多頭' : v >= 45 ? '盤整' : '空頭';
@@ -203,11 +300,14 @@
 
             return {
                 score,
-                chip: { value: chip, label: labels(chip) },
-                tech: { value: tech, label: techLabels(tech) },
-                sentiment: { value: sentiment, label: sentLabels(sentiment) },
+                chip: { value: Math.round(chipScore), label: labels(chipScore) },
+                tech: { value: Math.round(techScore), label: techLabels(techScore) },
+                sentiment: { value: Math.round(sentScore), label: sentLabels(sentScore) },
             };
         }
+
+        // Alias for backward compat
+        function generateAIScore(stock) { return generateCTS(stock); }
 
         // === Chart Data Generation ===
         function generateOHLC(stock, suffix, count, intervalSec) {
