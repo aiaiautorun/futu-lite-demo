@@ -74,7 +74,7 @@
     <header>
         <div class="logo">
             <div class="logo-icon">牛</div>
-            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v0.6 CTS</span></span>
+            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v0.7 多週期共振</span></span>
         </div>
         <div class="status">
             <div class="dot"></div> LIVE
@@ -306,7 +306,109 @@
             };
         }
 
-        // Alias for backward compat
+        // === Multi-Timeframe CTS from OHLCV data ===
+        function calcCTSFromOHLCV(ohlcvData) {
+            // ohlcvData = array of {open, high, low, close} + volumeData
+            const len = ohlcvData.data.length;
+            if (len < 25) return { score: 50, direction: 0, chip: { value: 50, label: '中立' }, tech: { value: 50, label: '盤整' }, sentiment: { value: 50, label: '中立' } };
+
+            const closes = ohlcvData.data.map(d => d.close);
+            const highs = ohlcvData.data.map(d => d.high);
+            const lows = ohlcvData.data.map(d => d.low);
+            const volumes = ohlcvData.volumeData.map(d => d.value);
+
+            // Build SMA (newest-first)
+            function buildSMA(period, numPoints) {
+                const result = [];
+                for (let i = 0; i < numPoints && len - 1 - i - period + 1 >= 0; i++) {
+                    const start = len - 1 - i;
+                    let sum = 0;
+                    for (let j = 0; j < period; j++) sum += closes[start - j];
+                    result.push(sum / period);
+                }
+                return result;
+            }
+
+            const ma5 = buildSMA(5, 5);
+            const ma10 = buildSMA(10, 5);
+            const ma20 = buildSMA(20, 5);
+
+            // ATR newest-first
+            const atrArr = [];
+            for (let i = 0; i < 14 && len - 1 - i > 0; i++) {
+                const idx = len - 1 - i;
+                const tr = Math.max(highs[idx] - lows[idx], Math.abs(highs[idx] - closes[idx - 1]), Math.abs(lows[idx] - closes[idx - 1]));
+                atrArr.push(tr);
+            }
+
+            const volArr = volumes.slice(-14).reverse();
+
+            const s5 = calcOneMAScore(ma5, ma5.length, atrArr, atrArr.length, volArr, volArr.length);
+            const s10 = calcOneMAScore(ma10, ma10.length, atrArr, atrArr.length, volArr, volArr.length);
+            const s20 = calcOneMAScore(ma20, ma20.length, atrArr, atrArr.length, volArr, volArr.length);
+
+            const cts2 = s5.score * 0.5 + s10.score * 0.3 + s20.score * 0.2;
+            const direction = cts2 >= 60 ? 1 : cts2 <= 40 ? -1 : 0; // 1=多, -1=空, 0=盤整
+
+            const chipScore = Math.max(0, Math.min(100, s5.score * 0.6 + s10.score * 0.4));
+            const techScore = Math.max(0, Math.min(100, s10.score * 0.5 + s20.score * 0.5));
+            const sentScore = Math.max(0, Math.min(100, scoreTanh(s5.acc * 10, 0.5)));
+
+            const score = Math.round(Math.max(5, Math.min(99, cts2)));
+            const labels = (v) => v >= 70 ? '強勢' : v >= 45 ? '中立' : '弱勢';
+            const techLabels = (v) => v >= 70 ? '多頭' : v >= 45 ? '盤整' : '空頭';
+            const sentLabels = (v) => v >= 65 ? '樂觀' : v >= 40 ? '中立' : '悲觀';
+
+            return {
+                score, direction,
+                chip: { value: Math.round(chipScore), label: labels(chipScore) },
+                tech: { value: Math.round(techScore), label: techLabels(techScore) },
+                sentiment: { value: Math.round(sentScore), label: sentLabels(sentScore) },
+            };
+        }
+
+        // Multi-timeframe resonance: combine 3 CTS results
+        function calcResonance(daily, hourly, min15) {
+            const dirs = [daily.direction, hourly.direction, min15.direction];
+            const allSame = dirs[0] !== 0 && dirs[0] === dirs[1] && dirs[1] === dirs[2];
+            const allDiff = dirs[0] !== dirs[1] && dirs[1] !== dirs[2] && dirs[0] !== dirs[2];
+
+            // Weighted average: daily 50%, 60min 30%, 15min 20%
+            let baseScore = daily.score * 0.5 + hourly.score * 0.3 + min15.score * 0.2;
+
+            let resonanceLevel, resonanceLabel;
+            if (allSame) {
+                // Strong resonance: boost by 10%
+                baseScore = baseScore * 1.10;
+                resonanceLevel = dirs[0] > 0 ? 'strong-bull' : 'strong-bear';
+                resonanceLabel = dirs[0] > 0 ? '🟢 三週期共振做多' : '🔴 三週期共振做空';
+            } else if (allDiff) {
+                // Full divergence: dampen by 15%
+                baseScore = 50 + (baseScore - 50) * 0.85;
+                resonanceLevel = 'divergent';
+                resonanceLabel = '⚪ 三週期分歧';
+            } else {
+                // Partial agreement
+                const agree = dirs.filter(d => d === dirs[0]).length;
+                if (agree >= 2) {
+                    baseScore = baseScore * 1.05;
+                }
+                resonanceLevel = 'partial';
+                resonanceLabel = '🟡 部分共振';
+            }
+
+            const finalScore = Math.round(Math.max(5, Math.min(99, baseScore)));
+            return { score: finalScore, resonanceLevel, resonanceLabel, dirs };
+        }
+
+        // Direction arrow helper
+        function dirArrow(dir) {
+            if (dir > 0) return '<span class="text-up">▲ 多</span>';
+            if (dir < 0) return '<span class="text-down">▼ 空</span>';
+            return '<span style="color:#9ca3af">▬ 盤整</span>';
+        }
+
+        // Alias for backward compat (fallback)
         function generateAIScore(stock) { return generateCTS(stock); }
 
         // === Chart Data Generation ===
@@ -411,8 +513,16 @@
             document.getElementById('badge-1h').textContent = stock.id + ' 60分';
             document.getElementById('badge-15m').textContent = stock.id + ' 15分';
 
-            // Update AI panel
-            const ai = generateAIScore(stock);
+            // Update AI panel — Multi-Timeframe Resonance
+            const ctsDaily = calcCTSFromOHLCV(daily);
+            const ctsHourly = calcCTSFromOHLCV(hourly);
+            const ctsMin15 = calcCTSFromOHLCV(min15);
+            const resonance = calcResonance(ctsDaily, ctsHourly, ctsMin15);
+
+            // Use daily CTS for sub-indicators, but resonance for overall score
+            const ai = ctsDaily;
+            ai.score = resonance.score;
+
             document.getElementById('ai-stock-name').textContent = stock.id + ' ' + stock.name;
             const scoreEl = document.getElementById('ai-score');
             scoreEl.textContent = ai.score;
@@ -422,6 +532,9 @@
             const textClass = (v) => v >= 65 ? 'text-up' : v >= 35 ? '' : 'text-down';
             
             document.getElementById('ai-bars').innerHTML = `
+                <div class="bar-row" style="margin-bottom:6px;"><span style="font-size:11px;color:#d1d5db;">📡 ${resonance.resonanceLabel}</span></div>
+                <div class="bar-row"><span style="font-size:11px;">日線</span>${dirArrow(resonance.dirs[0])}<span style="margin-left:8px;font-size:11px;">60分</span>${dirArrow(resonance.dirs[1])}<span style="margin-left:8px;font-size:11px;">15分</span>${dirArrow(resonance.dirs[2])}</div>
+                <div style="border-top:1px solid #374151;margin:6px 0;"></div>
                 <div class="bar-row"><span>籌碼面</span><span class="${textClass(ai.chip.value)}">${ai.chip.label}</span></div>
                 <div class="progress-bg"><div class="progress-fill ${colorClass(ai.chip.value)}" style="width: ${ai.chip.value}%"></div></div>
                 <div class="bar-row"><span>技術面</span><span class="${textClass(ai.tech.value)}">${ai.tech.label}</span></div>
