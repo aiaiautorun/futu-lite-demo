@@ -584,9 +584,13 @@
             });
         });
 
-        // === Price Simulation ===
+        // === Price Simulation (random subset each tick) ===
         setInterval(() => {
-            stocks.forEach(s => {
+            // Each tick, randomly pick 1-3 stocks to update (more realistic)
+            const count = Math.floor(Math.random() * 3) + 1;
+            const shuffled = [...stocks].sort(() => Math.random() - 0.5);
+            const toUpdate = shuffled.slice(0, count);
+            toUpdate.forEach(s => {
                 const oldPrice = s.price;
                 s.price += (Math.random() - 0.48 + s.trend) * s.volatility * s.price * 0.1;
                 const priceEl = document.getElementById('price-' + s.id);
@@ -607,7 +611,7 @@
                     setTimeout(() => rowEl.classList.remove(cls), 500);
                 }
             });
-        }, 800);
+        }, 500);
 
         // === Init ===
         switchStock(stocks[0]);
