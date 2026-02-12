@@ -93,7 +93,7 @@
         <button class="hamburger" id="hamburger" aria-label="選股列表">☰</button>
         <div class="logo">
             <div class="logo-icon">牛</div>
-            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.2</span></span>
+            <span>Futu-Lite <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.3</span></span>
         </div>
         <div class="status">
             <span style="color:#4b5563;font-size:10px;margin-right:8px;" class="kbd-hint">↑↓ 切換 · 1/2/3 分頁</span>
@@ -127,7 +127,10 @@
             </div>
 
             <div class="panel">
-                <div class="panel-header"><span class="badge" id="badge-15m">2330 15分</span></div>
+                <div class="panel-header">
+                    <span class="badge" id="badge-15m">2330 15分</span>
+                    <span class="badge" id="tf-toggle" style="cursor:pointer;color:#facc15;border-color:#facc15;" title="切換 15分/5秒">15m ⇄ 5s</span>
+                </div>
                 <div id="chart-15m" class="chart-div"></div>
             </div>
 
@@ -605,7 +608,10 @@
             // Generate data for 3 timeframes
             const daily = generateOHLC(stock, 'daily', 120, 86400, stock.price);
             const hourly = generateOHLC(stock, '1h', 100, 3600, stock.price);
-            const min15 = generateOHLC(stock, '15m', 100, 900, stock.price);
+            const shortSuffix = shortTF === '5s' ? '5s' : '15m';
+            const shortCount = shortTF === '5s' ? 200 : 100;
+            const shortInterval = shortTF === '5s' ? 5 : 900;
+            const min15 = generateOHLC(stock, shortSuffix, shortCount, shortInterval, stock.price);
 
             // Save last candles for live updates
             activeCandles = {
@@ -621,7 +627,7 @@
             // Update badges
             document.getElementById('badge-daily').textContent = stock.id + ' 日線';
             document.getElementById('badge-1h').textContent = stock.id + ' 60分';
-            document.getElementById('badge-15m').textContent = stock.id + ' 15分';
+            document.getElementById('badge-15m').textContent = stock.id + (shortTF === '5s' ? ' 5秒' : ' 15分');
 
             // Update AI panel — Multi-Timeframe Resonance
             const ctsDaily = calcCTSFromOHLCV(daily);
@@ -784,6 +790,43 @@
                 document.querySelector('[data-filter="all"]').click();
             }
         });
+
+        // === 15m / 5s Timeframe Toggle ===
+        let shortTF = '15m'; // '15m' or '5s'
+        document.getElementById('tf-toggle').addEventListener('click', () => {
+            shortTF = shortTF === '15m' ? '5s' : '15m';
+            document.getElementById('tf-toggle').textContent = shortTF === '15m' ? '15m ⇄ 5s' : '5s ⇄ 15m';
+            refreshShortTF();
+        });
+
+        function refreshShortTF() {
+            const stock = activeStock;
+            const badge = document.getElementById('badge-15m');
+            if (charts['15m']) { charts['15m'].chart.remove(); delete charts['15m']; }
+
+            if (shortTF === '5s') {
+                badge.textContent = stock.id + ' 5秒';
+                const d5s = generateOHLC(stock, '5s', 200, 5, stock.price);
+                charts['15m'] = createChart('chart-15m', d5s.data, d5s.volumeData, d5s.maData, false);
+                activeCandles['15m'] = d5s.data[d5s.data.length - 1];
+            } else {
+                badge.textContent = stock.id + ' 15分';
+                const d15 = generateOHLC(stock, '15m', 100, 900, stock.price);
+                charts['15m'] = createChart('chart-15m', d15.data, d15.volumeData, d15.maData, false);
+                activeCandles['15m'] = d15.data[d15.data.length - 1];
+            }
+        }
+
+        // === 5s New Candle Timer ===
+        setInterval(() => {
+            if (shortTF !== '5s' || !charts['15m']) return;
+            const s = activeStock;
+            const prev = activeCandles['15m'];
+            const newTime = prev.time + 5;
+            const newBar = { time: newTime, open: s.price, high: s.price, low: s.price, close: s.price };
+            activeCandles['15m'] = newBar;
+            charts['15m'].series.update(newBar);
+        }, 5000);
 
         // === Init ===
         switchStock(stocks[0]);
