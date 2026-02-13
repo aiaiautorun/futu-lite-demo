@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>KStation API Test</title>
+    <style>
+        body { background: #111827; color: #e5e7eb; font-family: monospace; padding: 20px; }
+        .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .btn:hover { background: #2563eb; }
+        pre { background: #1f2937; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
+        input { background: #374151; border: 1px solid #4b5563; color: white; padding: 4px 8px; border-radius: 4px; width: 300px; }
+    </style>
+</head>
+<body>
+    <h2>📡 KStation API Connectivity Test</h2>
+    
+    <div style="margin-bottom: 20px;">
+        <label>API URL:</label>
+        <input type="text" id="apiUrl" value="https://hts2.tail45e5a8.ts.net/api">
+    </div>
+
+    <div style="margin-bottom: 20px;">
+        <button class="btn" onclick="testQuote()">1. Test Quote (0050)</button>
+        <button class="btn" onclick="testStrategy()">2. Test Strategy (/test)</button>
+    </div>
+
+    <h3>Request Payload:</h3>
+    <pre id="reqPayload">-</pre>
+
+    <h3>Response:</h3>
+    <pre id="resOutput" style="color: #10b981;">Waiting...</pre>
+
+    <script>
+        async function callApi(url, payload) {
+            document.getElementById('reqPayload').textContent = JSON.stringify(payload, null, 2);
+            document.getElementById('resOutput').textContent = 'Loading...';
+            
+            try {
+                const res = await fetch(url, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await res.json();
+                document.getElementById('resOutput').textContent = JSON.stringify(data, null, 2);
+            } catch (err) {
+                document.getElementById('resOutput').textContent = 'Error: ' + err.message;
+                document.getElementById('resOutput').style.color = '#ef4444';
+            }
+        }
+
+        function testQuote() {
+            const url = document.getElementById('apiUrl').value;
+            const payload = { "apiType": "getQuoteInfo", "type":"tse", "symbol": ["0050"] };
+            callApi(url, payload);
+        }
+
+        function testStrategy() {
+            // The /test endpoint is separate, change path
+            let base = document.getElementById('apiUrl').value.replace('/api', '');
+            const url = base + '/test';
+            const payload = { "apiType": "TestStrategies", "type": "add", "count": 10000, "market": "tse", "symbol": "2330" };
+            callApi(url, payload);
+        }
+    </script>
+</body>
+</html>
