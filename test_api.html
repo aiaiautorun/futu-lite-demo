@@ -33,7 +33,8 @@
             <button class="btn" onclick="sendReq('getStockInfo', 'all')">1. Get Stock Info (ALL)</button>
             <button class="btn" onclick="sendReq('getQuoteInfo', ['0050'])">2. Get Quote (0050)</button>
             <button class="btn" onclick="sendReq('getQuoteInfo', ['all'])">3. Get Quote (ALL)</button>
-            <button class="btn" onclick="sendTestStrategy()">4. Test Strategy (/test)</button>
+            <button class="btn" onclick="sendKLine('2330')">4. Get KLine (2330)</button>
+            <button class="btn" onclick="sendTestStrategy()">5. Test Strategy (/test)</button>
             
             <div style="margin-top: 15px;">
                 <h4>Request:</h4>
@@ -66,6 +67,15 @@
                 <tr><td>price_change_percent</td><td>漲跌幅</td></tr>
                 <tr><td>total_volume</td><td>總成交量</td></tr>
             </table>
+
+            <h4>3. getKLine (取得 K 線歷史)</h4>
+            <p>取得 1 分鐘 K 線數據。</p>
+            <table>
+                <tr><th>欄位</th><th>說明</th></tr>
+                <tr><td>time</td><td>時間 (HHMM)</td></tr>
+                <tr><td>open/high/low/close</td><td>價格</td></tr>
+                <tr><td>vol</td><td>成交量</td></tr>
+            </table>
         </div>
     </div>
 
@@ -92,6 +102,13 @@
         function sendReq(apiType, symbol) {
             const url = document.getElementById('apiUrl').value;
             const payload = { "apiType": apiType, "type": "tse", "symbol": symbol };
+            callApi(url, payload);
+        }
+
+        function sendKLine(symbol) {
+            const url = document.getElementById('apiUrl').value;
+            // Use today's date or empty to let server decide
+            const payload = { "apiType": "getKLine", "date": "today", "symbol": symbol, "type": "1m" };
             callApi(url, payload);
         }
 
