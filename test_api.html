@@ -3,38 +3,77 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>KStation API Test</title>
+    <title>KStation API Test & Doc</title>
     <style>
         body { background: #111827; color: #e5e7eb; font-family: monospace; padding: 20px; }
-        .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; }
+        .container { max-width: 1000px; margin: 0 auto; }
+        .btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; margin-right: 10px; margin-bottom: 10px; }
         .btn:hover { background: #2563eb; }
-        pre { background: #1f2937; padding: 10px; border-radius: 4px; white-space: pre-wrap; word-break: break-all; }
-        input { background: #374151; border: 1px solid #4b5563; color: white; padding: 4px 8px; border-radius: 4px; width: 300px; }
+        .section { background: #1f2937; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
+        pre { background: #111827; padding: 15px; border-radius: 4px; overflow-x: auto; color: #a5b4fc; }
+        input { background: #374151; border: 1px solid #4b5563; color: white; padding: 6px 10px; border-radius: 4px; width: 300px; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { border: 1px solid #374151; padding: 8px; text-align: left; }
+        th { background: #374151; }
     </style>
 </head>
 <body>
-    <h2>📡 KStation API Connectivity Test</h2>
-    
-    <div style="margin-bottom: 20px;">
-        <label>API URL:</label>
-        <input type="text" id="apiUrl" value="https://hts2.tail45e5a8.ts.net/api">
+    <div class="container">
+        <h1>📡 KStation API 測試與文件</h1>
+        
+        <div class="section">
+            <h3>📍 API 設定</h3>
+            <label>API URL:</label>
+            <input type="text" id="apiUrl" value="https://hts2.tail45e5a8.ts.net/api">
+            <small>(請確認 Tailscale Funnel 已開啟)</small>
+        </div>
+
+        <div class="section">
+            <h3>🧪 測試控制台</h3>
+            <button class="btn" onclick="sendReq('getStockInfo', 'all')">1. Get Stock Info (ALL)</button>
+            <button class="btn" onclick="sendReq('getQuoteInfo', ['0050'])">2. Get Quote (0050)</button>
+            <button class="btn" onclick="sendReq('getQuoteInfo', ['all'])">3. Get Quote (ALL)</button>
+            <button class="btn" onclick="sendTestStrategy()">4. Test Strategy (/test)</button>
+            
+            <div style="margin-top: 15px;">
+                <h4>Request:</h4>
+                <pre id="reqDisplay">-</pre>
+                <h4>Response:</h4>
+                <pre id="resDisplay" style="max-height: 300px;">Waiting...</pre>
+            </div>
+        </div>
+
+        <div class="section">
+            <h3>📚 API 文件說明</h3>
+            
+            <h4>1. getStockInfo (取得商品基本資料)</h4>
+            <p>取得靜態資料（代號、名稱、漲跌停價等）。</p>
+            <table>
+                <tr><th>欄位</th><th>說明</th></tr>
+                <tr><td>symbol</td><td>商品代號</td></tr>
+                <tr><td>name</td><td>商品名稱</td></tr>
+                <tr><td>base_price</td><td>參考價（昨收）</td></tr>
+                <tr><td>limit_up/down</td><td>漲跌停價</td></tr>
+                <tr><td>decimal_places</td><td>小數位數</td></tr>
+            </table>
+
+            <h4>2. getQuoteInfo (取得即時行情)</h4>
+            <p>取得動態報價（成交價、漲跌幅、量能）。</p>
+            <table>
+                <tr><th>欄位</th><th>說明</th></tr>
+                <tr><td>latest_price</td><td>最新成交價</td></tr>
+                <tr><td>price_change</td><td>漲跌</td></tr>
+                <tr><td>price_change_percent</td><td>漲跌幅</td></tr>
+                <tr><td>total_volume</td><td>總成交量</td></tr>
+            </table>
+        </div>
     </div>
-
-    <div style="margin-bottom: 20px;">
-        <button class="btn" onclick="testQuote()">1. Test Quote (0050)</button>
-        <button class="btn" onclick="testStrategy()">2. Test Strategy (/test)</button>
-    </div>
-
-    <h3>Request Payload:</h3>
-    <pre id="reqPayload">-</pre>
-
-    <h3>Response:</h3>
-    <pre id="resOutput" style="color: #10b981;">Waiting...</pre>
 
     <script>
         async function callApi(url, payload) {
-            document.getElementById('reqPayload').textContent = JSON.stringify(payload, null, 2);
-            document.getElementById('resOutput').textContent = 'Loading...';
+            document.getElementById('reqDisplay').textContent = JSON.stringify(payload, null, 2);
+            document.getElementById('resDisplay').textContent = 'Loading...';
+            document.getElementById('resDisplay').style.color = '#a5b4fc';
             
             try {
                 const res = await fetch(url, {
@@ -43,23 +82,25 @@
                     body: JSON.stringify(payload)
                 });
                 const data = await res.json();
-                document.getElementById('resOutput').textContent = JSON.stringify(data, null, 2);
+                document.getElementById('resDisplay').textContent = JSON.stringify(data, null, 2);
             } catch (err) {
-                document.getElementById('resOutput').textContent = 'Error: ' + err.message;
-                document.getElementById('resOutput').style.color = '#ef4444';
+                document.getElementById('resDisplay').textContent = 'Error: ' + err.message;
+                document.getElementById('resDisplay').style.color = '#ef4444';
             }
         }
 
-        function testQuote() {
+        function sendReq(apiType, symbol) {
             const url = document.getElementById('apiUrl').value;
-            const payload = { "apiType": "getQuoteInfo", "type":"tse", "symbol": ["0050"] };
+            const payload = { "apiType": apiType, "type": "tse", "symbol": symbol };
             callApi(url, payload);
         }
 
-        function testStrategy() {
-            // The /test endpoint is separate, change path
-            let base = document.getElementById('apiUrl').value.replace('/api', '');
-            const url = base + '/test';
+        function sendTestStrategy() {
+            let url = document.getElementById('apiUrl').value;
+            // Handle relative or absolute URL to find /test endpoint
+            if (url.endsWith('/api')) url = url.replace('/api', '/test');
+            else url = url.replace(/\/$/, '') + '/../test'; // fallback
+            
             const payload = { "apiType": "TestStrategies", "type": "add", "count": 10000, "market": "tse", "symbol": "2330" };
             callApi(url, payload);
         }
