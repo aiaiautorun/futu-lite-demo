@@ -8,812 +8,442 @@
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #0b0f19; color: #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
-        
         header { height: 48px; background: #111827; border-bottom: 1px solid #1f2937; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; flex-shrink: 0; }
         .logo { display: flex; align-items: center; gap: 8px; font-weight: bold; color: white; }
-        .logo-icon { width: 24px; height: 24px; background: #f97316; border-radius: 4px; display: flex; align-items: center; justify-content: center; color: white; font-size: 14px; }
+        .logo-icon { width: 28px; height: 28px; background: #f97316; border-radius: 6px; display: flex; align-items: center; justify-content: center; color: white; font-size: 16px; font-weight: bold; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .hotkey-hint { font-size: 11px; color: #6b7280; }
         .status { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #22c55e; }
         .dot { width: 8px; height: 8px; background: #22c55e; border-radius: 50%; box-shadow: 0 0 5px #22c55e; }
-
         .main-container { flex: 1; display: flex; overflow: hidden; }
-        
-        aside { width: 260px; background: #111827; border-right: 1px solid #1f2937; display: flex; flex-direction: column; flex-shrink: 0; }
+        aside { width: 240px; background: #111827; border-right: 1px solid #1f2937; display: flex; flex-direction: column; flex-shrink: 0; }
         .tabs { display: flex; border-bottom: 1px solid #1f2937; }
         .tab { flex: 1; padding: 10px; text-align: center; color: #6b7280; font-size: 12px; cursor: pointer; transition: all 0.2s; }
-        .tab:hover { color: #d1d5db; }
         .tab.active { color: white; border-bottom: 2px solid #f97316; background: #1f2937; }
-        
+        .tab:hover { color: #d1d5db; }
         .watchlist { flex: 1; overflow-y: auto; }
-        .stock-row { padding: 12px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; cursor: pointer; transition: background 0.2s; }
+        .stock-row { padding: 10px 12px; border-bottom: 1px solid #1f2937; display: flex; justify-content: space-between; cursor: pointer; transition: background 0.2s; }
         .stock-row:hover { background: #1f2937; }
-        .stock-row.active { background: #1f2937; border-left: 4px solid #f97316; }
+        .stock-row.active { background: #1f2937; border-left: 3px solid #f97316; }
         .stock-info { display: flex; flex-direction: column; }
-        .symbol { font-weight: bold; font-size: 14px; color: white; }
-        .name { font-size: 12px; color: #9ca3af; }
+        .symbol { font-weight: bold; font-size: 13px; color: white; }
+        .name { font-size: 11px; color: #9ca3af; }
         .price-box { text-align: right; }
-        .price { font-family: monospace; font-size: 14px; font-weight: bold; }
-        .change { font-size: 12px; font-family: monospace; }
+        .price { font-family: monospace; font-size: 13px; font-weight: bold; }
+        .change { font-size: 11px; }
         .text-up { color: #ef4444; }
         .text-down { color: #22c55e; }
-
         main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: #000; padding: 1px; }
-        
         .panel { background: #111827; position: relative; display: flex; flex-direction: column; overflow: hidden; }
-        .panel-header { position: absolute; top: 8px; left: 8px; z-index: 10; display: flex; gap: 8px; }
-        .badge { background: rgba(31, 41, 55, 0.9); border: 1px solid #374151; color: #f97316; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; }
+        .panel-header { position: absolute; top: 8px; left: 8px; z-index: 10; display: flex; gap: 8px; align-items: center; }
+        .badge { background: rgba(31, 41, 55, 0.9); border: 1px solid #374151; color: #f97316; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; }
         .chart-div { width: 100%; height: 100%; }
-
-        .ai-panel { padding: 8px; display: flex; flex-direction: column; justify-content: flex-start; align-items: center; text-align: center; overflow-y: auto; gap: 2px; }
-        .score { font-size: 48px; font-weight: 900; line-height: 1; margin: 4px 0; transition: all 0.3s; }
-        .score.bullish { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.2); }
-        .score.neutral { color: #eab308; text-shadow: 0 0 20px rgba(234, 179, 8, 0.2); }
-        .score.bearish { color: #22c55e; text-shadow: 0 0 20px rgba(34, 197, 94, 0.2); }
-        .ai-title { color: #6b7280; font-size: 11px; letter-spacing: 1px; text-transform: uppercase; }
-        .ai-stock-name { color: #f97316; font-size: 13px; font-weight: bold; margin-top: 2px; }
-        .bar-container { width: 100%; max-width: 200px; margin-top: 4px; }
-        .bar-row { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 2px; }
-        .progress-bg { height: 5px; background: #1f2937; border-radius: 3px; overflow: hidden; margin-bottom: 8px; }
-        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
-        .fill-red { background: #ef4444; }
-        .fill-green { background: #22c55e; }
-        .fill-yellow { background: #eab308; }
-
+        .ai-panel { padding: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
+        .ai-title { color: #6b7280; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
+        .ai-stock-name { color: #f97316; font-size: 14px; font-weight: bold; margin: 6px 0; }
+        .score { font-size: 72px; font-weight: 900; line-height: 1; margin: 10px 0; }
+        .score.high { color: #ef4444; text-shadow: 0 0 20px rgba(239, 68, 68, 0.3); }
+        .score.mid { color: #eab308; text-shadow: 0 0 20px rgba(234, 179, 8, 0.3); }
+        .score.low { color: #22c55e; text-shadow: 0 0 20px rgba(34, 197, 94, 0.3); }
+        .bar-container { width: 100%; max-width: 200px; margin-top: 10px; }
+        .bar-row { display: flex; justify-content: space-between; font-size: 11px; color: #9ca3af; margin-bottom: 4px; }
+        .progress-bg { height: 6px; background: #1f2937; border-radius: 3px; overflow: hidden; margin-bottom: 12px; }
+        .progress-fill { height: 100%; border-radius: 3px; transition: width 0.5s; }
+        .data-info { margin-top: 16px; font-size: 10px; color: #4b5563; }
+        .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #6b7280; font-size: 12px; z-index: 5; }
         @keyframes flashUp { 0% { background: rgba(239, 68, 68, 0.3); } 100% { background: transparent; } }
         @keyframes flashDown { 0% { background: rgba(34, 197, 94, 0.3); } 100% { background: transparent; } }
         .flash-up { animation: flashUp 0.5s; }
         .flash-down { animation: flashDown 0.5s; }
-
-        .hamburger { display: none; background: none; border: none; color: white; font-size: 22px; cursor: pointer; padding: 4px 8px; }
-        .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 99; }
-
         @media (max-width: 768px) {
-            .kbd-hint { display: none; }
-            .hamburger { display: block; }
-            body { overflow-y: auto; height: auto; min-height: 100vh; }
-            aside { display: none; position: fixed; top: 48px; left: 0; bottom: 0; width: 280px; z-index: 100; }
-            aside.open { display: flex; }
-            .mobile-overlay.open { display: block; }
-            main { grid-template-columns: 1fr; grid-template-rows: 240px 240px 240px auto; min-height: calc(100vh - 48px); }
-            .ai-panel { min-height: 320px; padding: 16px; }
-            .score { font-size: 56px; }
-            .panel-header .badge { font-size: 10px; padding: 2px 5px; }
-            header { padding: 0 10px; }
-        }
-
-        @media (max-width: 480px) {
-            main { grid-template-rows: 200px 200px 200px auto; }
-            .score { font-size: 48px; }
-            .ai-panel { min-height: 280px; }
+            aside { display: none; }
+            main { grid-template-columns: 1fr; grid-template-rows: 1fr 1fr 1fr auto; }
         }
     </style>
 </head>
 <body>
-
-    <header>
-        <button class="hamburger" id="hamburger" aria-label="選股列表">☰</button>
-        <div class="logo">
-            <div class="logo-icon">K</div>
-            <span>KStation <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.4 API</span></span>
-        </div>
-        <div class="status">
-            <span style="color:#4b5563;font-size:10px;margin-right:8px;" class="kbd-hint">↑↓ 切換 · 1/2/3 分頁</span>
-            <div class="dot"></div> LIVE
-        </div>
-    </header>
-
-    <div class="mobile-overlay" id="mobile-overlay"></div>
-    <div class="main-container">
-        <aside id="sidebar">
-            <div class="tabs">
-                <div class="tab active" data-filter="tw">台股</div>
-                <div class="tab" data-filter="us">美股</div>
-                <div class="tab" data-filter="all">全部</div>
-            </div>
-            <div class="watchlist" id="watchlist"></div>
-        </aside>
-
-        <main>
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="badge" id="badge-daily">2330 日線</span>
-                    <span class="badge" style="color:#facc15">MA20</span>
-                </div>
-                <div id="chart-daily" class="chart-div"></div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-header"><span class="badge" id="badge-1h">2330 60分</span></div>
-                <div id="chart-1h" class="chart-div"></div>
-            </div>
-
-            <div class="panel">
-                <div class="panel-header">
-                    <span class="badge" id="badge-15m">2330 15分</span>
-                    <span class="badge" id="tf-toggle" style="cursor:pointer;color:#facc15;border-color:#facc15;" title="切換 15分/5秒">15m ⇄ 5s</span>
-                </div>
-                <div id="chart-15m" class="chart-div"></div>
-            </div>
-
-            <div class="panel ai-panel" id="ai-panel">
-                <div class="ai-title">AI 趨勢評分</div>
-                <div class="ai-stock-name" id="ai-stock-name">2330 台積電</div>
-                <div class="score bullish" id="ai-score">88</div>
-                <div class="bar-container" id="ai-bars"></div>
-            </div>
-        </main>
+<header>
+    <div class="logo">
+        <div class="logo-icon">K</div>
+        <span>KStation <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.5</span></span>
     </div>
-
-    <script>
-        if (typeof LightweightCharts === 'undefined') {
-            alert('圖表庫載入失敗！請檢查 lightweight-charts.js 是否存在');
-        }
-
-        // === Seeded Random (for Fallback) ===
-        function seededRandom(seed) {
-            let s = seed;
-            return function() {
-                s = (s * 16807 + 0) % 2147483647;
-                return (s - 1) / 2147483646;
-            };
-        }
-
-        function hashStr(str) {
-            let hash = 5381;
-            for (let i = 0; i < str.length; i++) {
-                hash = ((hash << 5) + hash) + str.charCodeAt(i);
-                hash = hash & hash;
-            }
-            return Math.abs(hash);
-        }
-
-        // === Stock Data ===
-        const stocks = [
-            { id: '2330', name: '台積電', price: 1080.00, market: 'tw', basePrice: 1080, volatility: 0.03, trend: 0.002 },
-            { id: '2317', name: '鴻海', price: 215.50, market: 'tw', basePrice: 215, volatility: 0.025, trend: 0.001 },
-            { id: '2454', name: '聯發科', price: 1385.00, market: 'tw', basePrice: 1385, volatility: 0.035, trend: 0.0015 },
-            { id: '2308', name: '台達電', price: 415.00, market: 'tw', basePrice: 415, volatility: 0.028, trend: 0.001 },
-            { id: '2881', name: '富邦金', price: 92.30, market: 'tw', basePrice: 92, volatility: 0.02, trend: -0.0005 },
-            { id: '2882', name: '國泰金', price: 68.50, market: 'tw', basePrice: 68, volatility: 0.02, trend: 0.0003 },
-            { id: '2603', name: '長榮', price: 198.00, market: 'tw', basePrice: 198, volatility: 0.04, trend: -0.001 },
-            { id: '3711', name: '日月光投控', price: 168.50, market: 'tw', basePrice: 168, volatility: 0.03, trend: 0.001 },
-            { id: '2412', name: '中華電', price: 132.50, market: 'tw', basePrice: 132, volatility: 0.012, trend: 0.0002 },
-            { id: '2886', name: '兆豐金', price: 52.80, market: 'tw', basePrice: 52, volatility: 0.018, trend: 0.0004 },
-            { id: '3037', name: '欣興', price: 215.00, market: 'tw', basePrice: 215, volatility: 0.04, trend: 0.002 },
-            { id: '2303', name: '聯電', price: 52.10, market: 'tw', basePrice: 52, volatility: 0.03, trend: 0.0008 },
-            { id: 'NVDA', name: '輝達', price: 186.94, market: 'us', basePrice: 186, volatility: 0.04, trend: 0.003 },
-            { id: 'TSLA', name: '特斯拉', price: 435.20, market: 'us', basePrice: 435, volatility: 0.05, trend: 0.001 },
-            { id: 'AAPL', name: '蘋果', price: 255.41, market: 'us', basePrice: 255, volatility: 0.02, trend: 0.001 },
-        ];
-
-        let activeStock = stocks[0];
-        let activeFilter = 'tw';
-        let charts = {};
-        let activeCandles = {};
-
-        // === CTS (Composite Trend Score) Algorithm ===
-        function scoreTanh(x, scale) {
-            if (scale <= 0) scale = 1;
-            return 50 + 50 * Math.tanh(x / scale);
-        }
-
-        function regressionSlope(arr, n) {
-            if (n < 2 || arr.length < n) return 0;
-            let sumx = 0, sumy = 0, sumxy = 0, sumxx = 0;
-            for (let i = 0; i < n; i++) {
-                sumx += i; sumy += arr[i]; sumxy += i * arr[i]; sumxx += i * i;
-            }
-            const denom = n * sumxx - sumx * sumx;
-            if (Math.abs(denom) < 1e-12) return 0;
-            return (n * sumxy - sumx * sumy) / denom;
-        }
-
-        function calcATRWeight(atrArr, n) {
-            if (n < 2) return 1;
-            let sum = 0;
-            for (let i = 0; i < n; i++) sum += atrArr[i];
-            const avg = sum / n;
-            if (avg < 1e-9) return 1;
-            const w = 1 + Math.tanh((atrArr[0] - avg) / avg);
-            return Math.max(0.5, Math.min(1.5, w));
-        }
-
-        function calcVolWeight(volArr, n) {
-            if (n < 2) return 1;
-            let sum = 0;
-            for (let i = 0; i < n; i++) sum += volArr[i];
-            const avg = sum / n;
-            if (avg < 1e-9) return 1;
-            const slope = regressionSlope(volArr, n);
-            const w = 1 + Math.tanh(slope / avg);
-            return Math.max(0.5, Math.min(1.5, w));
-        }
-
-        function calcOneMAScore(maArr, n, atrArr, nATR, volArr, nVol) {
-            if (n < 3 || maArr.length < n) return { score: 50, acc: 0 };
-            const dir = maArr[0] - maArr[1];
-            const ds = scoreTanh(dir, 0.8);
-            const slopeNow = regressionSlope(maArr, n);
-            const slopePrev = regressionSlope(maArr.slice(1), n - 1);
-            const ss = scoreTanh(slopeNow, 0.4);
-            const acc = slopeNow - slopePrev;
-            const as = scoreTanh(acc, 0.2);
-            let base = (ds + ss + as) / 3;
-            // Only apply weights if data is provided
-            const wATR = atrArr.length ? calcATRWeight(atrArr, nATR) : 1;
-            const wVol = volArr.length ? calcVolWeight(volArr, nVol) : 1;
-            let final = base * wATR * wVol;
-            return { score: Math.max(0, Math.min(100, final)), acc };
-        }
-
-        // === MACD & Reversal Helpers ===
-        function calcEMA(data, period) {
-            const k = 2 / (period + 1);
-            let ema = data[0];
-            const result = [ema];
-            for (let i = 1; i < data.length; i++) {
-                ema = data[i] * k + ema * (1 - k);
-                result.push(ema);
-            }
-            return result;
-        }
-
-        function calcMACD(closes) {
-            // closes: oldest -> newest
-            if (closes.length < 26) return { hist: [0,0] };
-            const ema12 = calcEMA(closes, 12);
-            const ema26 = calcEMA(closes, 26);
-            const dif = ema12.map((v, i) => v - ema26[i]);
-            const dea = calcEMA(dif, 9);
-            const hist = dif.map((v, i) => v - dea[i]);
-            return { dif, dea, hist };
-        }
-
-        // === Multi-Timeframe CTS from OHLCV data ===
-        function calcCTSFromOHLCV(ohlcvData) {
-            const len = ohlcvData.data.length;
-            if (len < 25) return { score: 50, direction: 0, chip: { value: 50, label: '中立' }, tech: { value: 50, label: '盤整' }, sentiment: { value: 50, label: '中立' }, reversal: 0 };
-
-            const closes = ohlcvData.data.map(d => d.close); // oldest -> newest
-            const highs = ohlcvData.data.map(d => d.high);
-            const lows = ohlcvData.data.map(d => d.low);
-            const volumes = ohlcvData.volumeData.map(d => d.value);
-
-            // Build SMA (newest-first)
-            function buildSMA(period, numPoints) {
-                const result = [];
-                for (let i = 0; i < numPoints && len - 1 - i - period + 1 >= 0; i++) {
-                    const start = len - 1 - i;
-                    let sum = 0;
-                    for (let j = 0; j < period; j++) sum += closes[start - j];
-                    result.push(sum / period);
-                }
-                return result;
-            }
-
-            const ma5 = buildSMA(5, 8); // Need extra history for acc calculation
-            const ma10 = buildSMA(10, 5);
-            const ma20 = buildSMA(20, 5);
-
-            // ATR newest-first
-            const atrArr = [];
-            for (let i = 0; i < 14 && len - 1 - i > 0; i++) {
-                const idx = len - 1 - i;
-                const tr = Math.max(highs[idx] - lows[idx], Math.abs(highs[idx] - closes[idx - 1]), Math.abs(lows[idx] - closes[idx - 1]));
-                atrArr.push(tr);
-            }
-
-            const volArr = volumes.slice(-14).reverse();
-
-            const s5 = calcOneMAScore(ma5.slice(0,5), 5, atrArr, atrArr.length, volArr, volArr.length);
-            const s10 = calcOneMAScore(ma10, 5, atrArr, atrArr.length, volArr, volArr.length);
-            const s20 = calcOneMAScore(ma20, 5, atrArr, atrArr.length, volArr, volArr.length);
-
-            const cts2 = s5.score * 0.5 + s10.score * 0.3 + s20.score * 0.2;
-            const direction = cts2 >= 60 ? 1 : cts2 <= 40 ? -1 : 0; 
-
-            const chipScore = Math.max(0, Math.min(100, s5.score * 0.6 + s10.score * 0.4));
-            const techScore = Math.max(0, Math.min(100, s10.score * 0.5 + s20.score * 0.5));
-            const sentScore = Math.max(0, Math.min(100, scoreTanh(s5.acc * 10, 0.5)));
-
-            // Reversal Detection
-            // 1. Acc Zero Crossing on MA5
-            const accNow = s5.acc;
-            const s5Prev = calcOneMAScore(ma5.slice(1, 6), 5, [], 0, [], 0);
-            const accPrev = s5Prev.acc;
-
-            // 2. MACD Histogram
-            const macdData = calcMACD(closes);
-            const histNow = macdData.hist[macdData.hist.length - 1];
-            const histPrev = macdData.hist[macdData.hist.length - 2];
-
-            let reversal = 0; 
-            
-            if (accPrev < 0 && accNow > 0 && histNow > histPrev) reversal = 1;
-            if (accPrev > 0 && accNow < 0 && histNow < histPrev) reversal = -1;
-
-            const score = Math.round(Math.max(5, Math.min(99, cts2)));
-            const labels = (v) => v >= 70 ? '強勢' : v >= 45 ? '中立' : '弱勢';
-            const techLabels = (v) => v >= 70 ? '多頭' : v >= 45 ? '盤整' : '空頭';
-            const sentLabels = (v) => v >= 65 ? '樂觀' : v >= 40 ? '中立' : '悲觀';
-
-            return {
-                score, direction, reversal,
-                chip: { value: Math.round(chipScore), label: labels(chipScore) },
-                tech: { value: Math.round(techScore), label: techLabels(techScore) },
-                sentiment: { value: Math.round(sentScore), label: sentLabels(sentScore) },
-            };
-        }
-
-        // === Radar Chart Indicators ===
-        function calcRSI(closes, period) {
-            if (closes.length < period + 1) return 50;
-            let gains = 0, losses = 0;
-            for (let i = closes.length - period; i < closes.length; i++) {
-                const diff = closes[i] - closes[i - 1];
-                if (diff > 0) gains += diff; else losses -= diff;
-            }
-            if (losses === 0) return 100;
-            const rs = (gains / period) / (losses / period);
-            return 100 - 100 / (1 + rs);
-        }
-
-        function calcBBPercent(closes, period) {
-            if (closes.length < period) return 50;
-            const slice = closes.slice(-period);
-            const mean = slice.reduce((a, b) => a + b) / period;
-            const std = Math.sqrt(slice.reduce((a, b) => a + (b - mean) ** 2, 0) / period);
-            if (std < 1e-9) return 50;
-            const upper = mean + 2 * std, lower = mean - 2 * std;
-            const pct = (closes[closes.length - 1] - lower) / (upper - lower) * 100;
-            return Math.max(0, Math.min(100, pct));
-        }
-
-        function calcMFI(highs, lows, closes, volumes, period) {
-            if (closes.length < period + 1) return 50;
-            let posFlow = 0, negFlow = 0;
-            for (let i = closes.length - period; i < closes.length; i++) {
-                const tp = (highs[i] + lows[i] + closes[i]) / 3;
-                const tpPrev = (highs[i-1] + lows[i-1] + closes[i-1]) / 3;
-                const mf = tp * volumes[i];
-                if (tp > tpPrev) posFlow += mf; else negFlow += mf;
-            }
-            if (negFlow === 0) return 100;
-            return 100 - 100 / (1 + posFlow / negFlow);
-        }
-
-        function calcRadarMetrics(ohlcvData) {
-            const d = ohlcvData.data, v = ohlcvData.volumeData;
-            const closes = d.map(x => x.close), highs = d.map(x => x.high);
-            const lows = d.map(x => x.low), vols = v.map(x => x.value);
-            const cts = calcCTSFromOHLCV(ohlcvData);
-            return {
-                CTS2: cts.score,
-                BB: Math.round(calcBBPercent(closes, 20)),
-                RSI: Math.round(calcRSI(closes, 14)),
-                MFI: Math.round(calcMFI(highs, lows, closes, vols, 14)),
-                ATRw: Math.round(scoreTanh(calcATRWeight((() => {
-                    const a = [];
-                    for (let i = 0; i < 14 && d.length - 1 - i > 0; i++) {
-                        const idx = d.length - 1 - i;
-                        a.push(Math.max(highs[idx]-lows[idx], Math.abs(highs[idx]-closes[idx-1]), Math.abs(lows[idx]-closes[idx-1])));
-                    }
-                    return a;
-                })(), 14) - 1, 0.3)),
-                VOLw: Math.round(scoreTanh(calcVolWeight(vols.slice(-14).reverse(), 14) - 1, 0.3)),
-            };
-        }
-
-        function renderRadarSVG(metrics) {
-            const labels = ['CTS2', 'BB%', 'RSI', 'MFI', 'ATRw', 'VOLw'];
-            const keys = ['CTS2', 'BB', 'RSI', 'MFI', 'ATRw', 'VOLw'];
-            const n = 6, cx = 80, cy = 75, R = 50;
-            const angles = keys.map((_, i) => -Math.PI / 2 + (2 * Math.PI * i) / n);
-            const pt = (a, r) => [cx + r * Math.cos(a), cy + r * Math.sin(a)];
-
-            let grid = '';
-            [0.25, 0.5, 0.75, 1].forEach(f => {
-                const pts = angles.map(a => pt(a, R * f).join(',')).join(' ');
-                grid += `<polygon points="${pts}" fill="none" stroke="#374151" stroke-width="0.5"/>`;
-            });
-            angles.forEach(a => {
-                const [x, y] = pt(a, R);
-                grid += `<line x1="${cx}" y1="${cy}" x2="${x}" y2="${y}" stroke="#374151" stroke-width="0.5"/>`;
-            });
-            const dataPts = keys.map((k, i) => pt(angles[i], R * metrics[k] / 100).join(',')).join(' ');
-            const color = Object.values(metrics).reduce((a, b) => a + b, 0) / 6 >= 55 ? '239,68,68' : Object.values(metrics).reduce((a, b) => a + b, 0) / 6 >= 40 ? '234,179,8' : '34,197,94';
-            grid += `<polygon points="${dataPts}" fill="rgba(${color},0.2)" stroke="rgb(${color})" stroke-width="1.5"/>`;
-            keys.forEach((k, i) => {
-                const [dx, dy] = pt(angles[i], R * metrics[k] / 100);
-                grid += `<circle cx="${dx}" cy="${dy}" r="2.5" fill="rgb(${color})"/>`;
-                const [lx, ly] = pt(angles[i], R + 12);
-                grid += `<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" fill="#9ca3af" font-size="8">${labels[i]}<tspan fill="#d1d5db" font-weight="bold"> ${metrics[k]}</tspan></text>`;
-            });
-            return `<svg viewBox="0 0 160 150" style="width:130px;height:120px;margin:2px 0;">${grid}</svg>`;
-        }
-
-        // Multi-timeframe resonance: combine 3 CTS results
-        function calcResonance(daily, hourly, min15) {
-            const dirs = [daily.direction, hourly.direction, min15.direction];
-            const allSame = dirs[0] !== 0 && dirs[0] === dirs[1] && dirs[1] === dirs[2];
-            const allDiff = dirs[0] !== dirs[1] && dirs[1] !== dirs[2] && dirs[0] !== dirs[2];
-
-            // Weighted average: daily 50%, 60min 30%, 15min 20%
-            let baseScore = daily.score * 0.5 + hourly.score * 0.3 + min15.score * 0.2;
-
-            let resonanceLevel, resonanceLabel;
-            if (allSame) {
-                baseScore = baseScore * 1.10;
-                resonanceLevel = dirs[0] > 0 ? 'strong-bull' : 'strong-bear';
-                resonanceLabel = dirs[0] > 0 ? '🟢 三週期共振做多' : '🔴 三週期共振做空';
-            } else if (allDiff) {
-                baseScore = 50 + (baseScore - 50) * 0.85;
-                resonanceLevel = 'divergent';
-                resonanceLabel = '⚪ 三週期分歧';
-            } else {
-                const agree = dirs.filter(d => d === dirs[0]).length;
-                if (agree >= 2) baseScore = baseScore * 1.05;
-                resonanceLevel = 'partial';
-                resonanceLabel = '🟡 部分共振';
-            }
-            
-            let revLabel = '';
-            if (daily.reversal !== 0) {
-                revLabel = daily.reversal > 0 ? '🚀 日線反轉向上' : '📉 日線反轉向下';
-                baseScore += daily.reversal * 5; 
-            } else if (hourly.reversal !== 0) {
-                revLabel = hourly.reversal > 0 ? '↗️ 60分反轉向上' : '↘️ 60分反轉向下';
-            }
-
-            const finalScore = Math.round(Math.max(5, Math.min(99, baseScore)));
-            return { score: finalScore, resonanceLevel, resonanceLabel, dirs, revLabel };
-        }
-
-        function dirArrow(dir) {
-            if (dir > 0) return '<span class="text-up">▲</span>';
-            if (dir < 0) return '<span class="text-down">▼</span>';
-            return '<span style="color:#9ca3af">▬</span>';
-        }
-
-        // === Chart Data Fetching (Real API) ===
-        async function fetchKLineData(symbol, type) {
-            const apiUrl = 'https://hts2.tail45e5a8.ts.net/api';
-            const date = '20260211'; // Fixed demo date
-            
-            try {
-                const res = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        "apiType": "getKLine", 
-                        "date": date, 
-                        "symbol": symbol, 
-                        "type": type 
-                    })
-                });
-                const json = await res.json();
-                
-                if (json.status !== 'success' || !json.data) return null;
-
-                const data = [];
-                const volumeData = [];
-                const maData = [];
-                
-                // Base timestamp for date
-                const year = parseInt(date.substring(0, 4));
-                const month = parseInt(date.substring(4, 6)) - 1;
-                const day = parseInt(date.substring(6, 8));
-                const baseTime = new Date(year, month, day).getTime() / 1000;
-
-                json.data.forEach((d, i) => {
-                    // time is HHMM (e.g. 900)
-                    const hh = Math.floor(d.time / 100);
-                    const mm = d.time % 100;
-                    const time = baseTime + hh * 3600 + mm * 60;
-
-                    // Price / 100
-                    const open = d.open / 100;
-                    const high = d.high / 100;
-                    const low = d.low / 100;
-                    const close = d.close / 100;
-                    const vol = d.vol;
-
-                    data.push({ time, open, high, low, close });
-                    volumeData.push({
-                        time,
-                        value: vol,
-                        color: close >= open ? 'rgba(239, 68, 68, 0.5)' : 'rgba(34, 197, 94, 0.5)'
-                    });
-
-                    // MA20
-                    if (i >= 19) {
-                        let sum = 0;
-                        for (let j = 0; j < 20; j++) sum += json.data[i - j].close / 100;
-                        maData.push({ time, value: sum / 20 });
-                    }
-                });
-
-                return { data, volumeData, maData };
-            } catch (e) {
-                console.error("Fetch KLine failed", e);
-                return null;
-            }
-        }
-
-        // === Chart Data Generation (Fallback) ===
-        function generateOHLC(stock, suffix, count, intervalSec, currentPrice) {
-            const rng = seededRandom(hashStr(stock.id + '_' + suffix));
-            const data = [];
-            const volumeData = [];
-            const maData = [];
-            let time = Math.floor(Date.now() / 1000) - count * intervalSec;
-            let price = stock.basePrice * (0.9 + rng() * 0.2);
-
-            for (let i = 0; i < count; i++) {
-                let open = price;
-                let change = (rng() - 0.48 + stock.trend) * stock.volatility;
-                let close = price * (1 + change);
-
-                if (i === count - 1 && currentPrice !== undefined) {
-                    close = currentPrice;
-                }
-
-                let high = Math.max(open, close) * (1 + rng() * 0.008);
-                let low = Math.min(open, close) * (1 - rng() * 0.008);
-                
-                if (close > high) high = close;
-                if (close < low) low = close;
-
-                let vol = (rng() * 8000 + 2000) * (stock.basePrice / 100);
-
-                data.push({ time: time + i * intervalSec, open, high, low, close });
-                volumeData.push({
-                    time: time + i * intervalSec,
-                    value: vol,
-                    color: close >= open ? 'rgba(239, 68, 68, 0.5)' : 'rgba(34, 197, 94, 0.5)'
-                });
-
-                if (i >= 20) {
-                    let sum = 0;
-                    for (let j = 0; j < 20; j++) sum += data[i - j].close;
-                    maData.push({ time: time + i * intervalSec, value: sum / 20 });
-                }
-                price = close;
-            }
-            return { data, volumeData, maData };
-        }
-
-        async function switchStock(stock) {
-            activeStock = stock;
-            destroyCharts();
-
-            // Fetch real data (use 1m data to simulate all charts for now)
-            const klineData = await fetchKLineData(stock.id, '1m');
-            
-            let daily, hourly, min15;
-
-            if (klineData && klineData.data.length > 0) {
-                // Real data available!
-                daily = klineData;
-                hourly = klineData;
-                min15 = klineData;
-            } else {
-                // Fallback to random
-                console.log("No API data for " + stock.id + ", using random");
-                daily = generateOHLC(stock, 'daily', 120, 86400, stock.price);
-                hourly = generateOHLC(stock, '1h', 100, 3600, stock.price);
-                min15 = generateOHLC(stock, '15m', 100, 900, stock.price);
-            }
-
-            // Save last candles
-            activeCandles = {
-                daily: daily.data[daily.data.length - 1],
-                '1h': hourly.data[hourly.data.length - 1],
-                '15m': min15.data[min15.data.length - 1]
-            };
-
-            charts.daily = createChart('chart-daily', daily.data, daily.volumeData, daily.maData, true);
-            charts['1h'] = createChart('chart-1h', hourly.data, hourly.volumeData, hourly.maData, false);
-            charts['15m'] = createChart('chart-15m', min15.data, min15.volumeData, min15.maData, false);
-
-            document.getElementById('badge-daily').textContent = stock.id + ' 日線';
-            document.getElementById('badge-1h').textContent = stock.id + ' 60分';
-            document.getElementById('badge-15m').textContent = stock.id + (shortTF === '5s' ? ' 5秒' : ' 15分');
-
-            const ctsDaily = calcCTSFromOHLCV(daily);
-            const ctsHourly = calcCTSFromOHLCV(hourly);
-            const ctsMin15 = calcCTSFromOHLCV(min15);
-            const resonance = calcResonance(ctsDaily, ctsHourly, ctsMin15);
-
-            const ai = ctsDaily;
-            ai.score = resonance.score;
-
-            document.getElementById('ai-stock-name').textContent = stock.id + ' ' + stock.name;
-            const scoreEl = document.getElementById('ai-score');
-            scoreEl.textContent = ai.score;
-            scoreEl.className = 'score ' + (ai.score >= 70 ? 'bullish' : ai.score >= 45 ? 'neutral' : 'bearish');
-
-            const colorClass = (v) => v >= 65 ? 'fill-red' : v >= 35 ? 'fill-yellow' : 'fill-green';
-            const textClass = (v) => v >= 65 ? 'text-up' : v >= 35 ? '' : 'text-down';
-            
-            const radar = calcRadarMetrics(daily);
-            
-            document.getElementById('ai-bars').innerHTML = `
-                <div class="bar-row" style="margin-bottom:6px;"><span style="font-size:11px;color:#d1d5db;">📡 ${resonance.resonanceLabel}</span></div>
-                ${resonance.revLabel ? `<div class="bar-row" style="margin-bottom:6px; justify-content:center; background:rgba(250,204,21,0.1); padding:2px; border-radius:4px;"><span style="font-size:12px;font-weight:bold;color:#facc15;">${resonance.revLabel}</span></div>` : ''}
-                <div class="bar-row"><span style="font-size:11px;">日線</span>${dirArrow(resonance.dirs[0])}<span style="margin-left:8px;font-size:11px;">60分</span>${dirArrow(resonance.dirs[1])}<span style="margin-left:8px;font-size:11px;">15分</span>${dirArrow(resonance.dirs[2])}</div>
-                <div style="border-top:1px solid #374151;margin:6px 0;"></div>
-                ${renderRadarSVG(radar)}
-                <div style="border-top:1px solid #374151;margin:4px 0;"></div>
-                <div class="bar-row"><span>籌碼面</span><span class="${textClass(ai.chip.value)}">${ai.chip.label}</span></div>
-                <div class="progress-bg"><div class="progress-fill ${colorClass(ai.chip.value)}" style="width: ${ai.chip.value}%"></div></div>
-                <div class="bar-row"><span>技術面</span><span class="${textClass(ai.tech.value)}">${ai.tech.label}</span></div>
-                <div class="progress-bg"><div class="progress-fill ${colorClass(ai.tech.value)}" style="width: ${ai.tech.value}%"></div></div>
-                <div class="bar-row"><span>市場情緒</span><span class="${textClass(ai.sentiment.value)}">${ai.sentiment.label}</span></div>
-                <div class="progress-bg"><div class="progress-fill ${colorClass(ai.sentiment.value)}" style="width: ${ai.sentiment.value}%"></div></div>
-            `;
-
-            renderList();
-        }
-
-        // === Watchlist ===
-        function renderList() {
-            const el = document.getElementById('watchlist');
-            if (!el) return;
-            el.innerHTML = '';
-            const filtered = activeFilter === 'all' ? stocks : stocks.filter(s => s.market === activeFilter);
-            filtered.forEach(s => {
-                const div = document.createElement('div');
-                div.className = `stock-row ${s.id === activeStock.id ? 'active' : ''}`;
-                div.id = 'row-' + s.id;
-                const changeVal = ((s.price - s.basePrice) / s.basePrice * 100);
-                const changeStr = (changeVal >= 0 ? '+' : '') + changeVal.toFixed(2) + '%';
-                const changeClass = changeVal >= 0 ? 'text-up' : 'text-down';
-                div.innerHTML = `
-                    <div class="stock-info">
-                        <span class="symbol">${s.id}</span>
-                        <span class="name">${s.name}</span>
-                    </div>
-                    <div class="price-box">
-                        <div class="price ${changeClass}" id="price-${s.id}">${s.price.toFixed(2)}</div>
-                        <div class="change ${changeClass}" id="change-${s.id}">${changeStr}</div>
-                    </div>
-                `;
-                div.addEventListener('click', () => switchStock(s));
-                el.appendChild(div);
-            });
-        }
-
-        // === Tabs ===
-        document.querySelectorAll('.tab').forEach(tab => {
-            tab.addEventListener('click', () => {
-                document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-                tab.classList.add('active');
-                activeFilter = tab.dataset.filter;
-                renderList();
-            });
+    <div class="header-right">
+        <span class="hotkey-hint">↑↓ 切換 · Click 選股</span>
+        <div class="status"><div class="dot"></div> LIVE</div>
+    </div>
+</header>
+<div class="main-container">
+    <aside>
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('tw')">台股</div>
+            <div class="tab" onclick="switchTab('us')">美股</div>
+            <div class="tab" onclick="switchTab('all')">全部</div>
+        </div>
+        <div class="watchlist" id="watchlist"></div>
+    </aside>
+    <main>
+        <div class="panel">
+            <div class="panel-header">
+                <span class="badge" id="badge-daily">2330 1分K</span>
+                <span class="badge" style="color:#facc15">MA20</span>
+            </div>
+            <div id="chart-daily" class="chart-div"></div>
+            <div class="loading" id="loading-daily">載入中...</div>
+        </div>
+        <div class="panel">
+            <div class="panel-header"><span class="badge" id="badge-60m">2330 60分</span></div>
+            <div id="chart-60m" class="chart-div"></div>
+            <div class="loading" id="loading-60m">載入中...</div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <span class="badge" id="badge-15m">2330 15分</span>
+            </div>
+            <div id="chart-15m" class="chart-div"></div>
+            <div class="loading" id="loading-15m">載入中...</div>
+        </div>
+        <div class="panel ai-panel" id="ai-panel">
+            <div class="ai-title">AI 趨勢評分</div>
+            <div class="ai-stock-name" id="ai-stock-name">2330 台積電</div>
+            <div class="score high" id="ai-score">--</div>
+            <div class="bar-container">
+                <div class="bar-row"><span>動能</span><span id="bar-momentum-label">--</span></div>
+                <div class="progress-bg"><div class="progress-fill" id="bar-momentum" style="width:0%;background:#22c55e"></div></div>
+                <div class="bar-row"><span>趨勢</span><span id="bar-trend-label">--</span></div>
+                <div class="progress-bg"><div class="progress-fill" id="bar-trend" style="width:0%;background:#22c55e"></div></div>
+                <div class="bar-row"><span>量能</span><span id="bar-volume-label">--</span></div>
+                <div class="progress-bg"><div class="progress-fill" id="bar-volume" style="width:0%;background:#eab308"></div></div>
+            </div>
+            <div class="data-info" id="data-info"></div>
+        </div>
+    </main>
+</div>
+<script>
+// ===== Config =====
+const API_BASE = 'https://hts2.tail45e5a8.ts.net/api';
+const DATA_DATE = '20260211';
+
+const twStocks = [
+    { id: '2330', name: '台積電', price: 1920 },
+    { id: '2317', name: '鴻海', price: 208 },
+    { id: '2454', name: '聯發科', price: 1585 },
+    { id: '2881', name: '富邦金', price: 92 },
+    { id: '2882', name: '國泰金', price: 68 },
+    { id: '2303', name: '聯電', price: 54 },
+    { id: '3008', name: '大立光', price: 2280 },
+    { id: '2412', name: '中華電', price: 128 },
+    { id: '6505', name: '台塑化', price: 72 },
+    { id: '1301', name: '台塑', price: 52 },
+];
+const usStocks = [
+    { id: 'NVDA', name: '輝達', price: 186.94 },
+    { id: 'TSLA', name: '特斯拉', price: 435.20 },
+    { id: 'AAPL', name: '蘋果', price: 255.41 },
+];
+
+let currentStock = twStocks[0];
+let currentTab = 'tw';
+let charts = {};
+
+// ===== API =====
+async function fetchKLineData(symbol, date, type) {
+    try {
+        const resp = await fetch(API_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiType: 'getKLine', symbol: symbol, date: date, type: type || '1m' })
         });
+        // Handle gzip - browser auto-decompresses
+        const text = await resp.text();
+        const json = JSON.parse(text);
+        if (json.status === 'success' && json.data) return json.data;
+        console.warn('API err:', json.emsg || json);
+        return null;
+    } catch (e) {
+        console.error('fetchKLineData error:', e);
+        return null;
+    }
+}
 
-        // === Price Simulation (random subset each tick) ===
-        setInterval(() => {
-            const count = Math.floor(Math.random() * 3) + 1;
-            const shuffled = [...stocks].sort(() => Math.random() - 0.5);
-            const toUpdate = shuffled.slice(0, count);
-            toUpdate.forEach(s => {
-                const oldPrice = s.price;
-                s.price += (Math.random() - 0.48 + s.trend) * s.volatility * s.price * 0.1;
+// ===== Convert API data to chart format =====
+function apiToCandles(apiData, dateStr) {
+    if (!apiData || !apiData.length) return { candles: [], volumes: [] };
+    const y = parseInt(dateStr.substring(0, 4));
+    const m = parseInt(dateStr.substring(4, 6)) - 1;
+    const d = parseInt(dateStr.substring(6, 8));
+    const candles = [], volumes = [];
+    apiData.forEach(bar => {
+        const hh = Math.floor(bar.time / 100);
+        const mm = bar.time % 100;
+        const ts = Math.floor(new Date(y, m, d, hh, mm).getTime() / 1000);
+        const o = bar.open / 100, h = bar.high / 100, l = bar.low / 100, c = bar.close / 100;
+        candles.push({ time: ts, open: o, high: h, low: l, close: c });
+        volumes.push({ time: ts, value: bar.vol, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
+    });
+    return { candles, volumes };
+}
 
-                if (s.id === activeStock.id) {
-                    ['daily', '1h', '15m'].forEach(tf => {
-                        if (charts[tf] && activeCandles[tf]) {
-                            const bar = activeCandles[tf];
-                            bar.close = s.price;
-                            if (s.price > bar.high) bar.high = s.price;
-                            if (s.price < bar.low) bar.low = s.price;
-                            charts[tf].series.update(bar);
-                        }
-                    });
-                }
+// ===== Aggregate bars =====
+function aggregateBars(candles, volumes, minutes) {
+    if (!candles.length) return { candles: [], volumes: [] };
+    const aggC = [], aggV = [];
+    const sec = minutes * 60;
+    let i = 0;
+    while (i < candles.length) {
+        const slot = Math.floor(candles[i].time / sec) * sec;
+        let o = candles[i].open, h = candles[i].high, l = candles[i].low, c = candles[i].close, vol = 0;
+        while (i < candles.length && Math.floor(candles[i].time / sec) * sec === slot) {
+            h = Math.max(h, candles[i].high);
+            l = Math.min(l, candles[i].low);
+            c = candles[i].close;
+            vol += (volumes[i] ? volumes[i].value : 0);
+            i++;
+        }
+        aggC.push({ time: slot, open: o, high: h, low: l, close: c });
+        aggV.push({ time: slot, value: vol, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
+    }
+    return { candles: aggC, volumes: aggV };
+}
 
-                const priceEl = document.getElementById('price-' + s.id);
-                const changeEl = document.getElementById('change-' + s.id);
-                const rowEl = document.getElementById('row-' + s.id);
-                if (priceEl) {
-                    priceEl.innerText = s.price.toFixed(2);
-                    priceEl.className = `price ${s.price >= oldPrice ? 'text-up' : 'text-down'}`;
-                }
-                if (changeEl) {
-                    const cv = ((s.price - s.basePrice) / s.basePrice * 100);
-                    changeEl.innerText = (cv >= 0 ? '+' : '') + cv.toFixed(2) + '%';
-                    changeEl.className = `change ${cv >= 0 ? 'text-up' : 'text-down'}`;
-                }
-                if (rowEl) {
-                    const cls = s.price > oldPrice ? 'flash-up' : 'flash-down';
-                    rowEl.classList.add(cls);
-                    setTimeout(() => rowEl.classList.remove(cls), 500);
-                }
+// ===== Chart Creation (LightweightCharts v5) =====
+function makeChart(containerId) {
+    const el = document.getElementById(containerId);
+    if (!el) return null;
+
+    // v5 API: createChart is on the module
+    const chart = LightweightCharts.createChart(el, {
+        layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
+        grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
+        timeScale: { borderColor: '#374151', timeVisible: true, rightOffset: 5 },
+        rightPriceScale: { borderColor: '#374151' },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    });
+
+    // v5: addSeries with type
+    const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
+        upColor: '#ef4444', downColor: '#22c55e',
+        borderUpColor: '#ef4444', borderDownColor: '#22c55e',
+        wickUpColor: '#ef4444', wickDownColor: '#22c55e',
+    });
+
+    const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
+        priceFormat: { type: 'volume' },
+        priceScaleId: 'vol',
+    });
+    chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+
+    new ResizeObserver(entries => {
+        if (!entries.length) return;
+        const { width, height } = entries[0].contentRect;
+        chart.applyOptions({ width, height });
+    }).observe(el);
+
+    return { chart, candleSeries, volumeSeries };
+}
+
+// ===== CTS Score =====
+function calcCTS(candles) {
+    if (!candles || candles.length < 25) return { score: 50, momentum: 50, trend: 50, volume: 50 };
+    const closes = candles.map(c => c.close);
+    const n = closes.length;
+    function ma(period) {
+        let s = 0; for (let i = n - period; i < n; i++) s += closes[i]; return s / period;
+    }
+    const ma5 = ma(5), ma10 = ma(10), last = closes[n - 1];
+    const momentum = Math.round(50 + 50 * Math.tanh((last - ma5) / ma5 * 50));
+    const trend = Math.round(50 + 50 * Math.tanh((last - ma10) / ma10 * 35));
+    // Volume: compare last 5 avg vs last 20 avg
+    const vols = candles.map(c => c.close); // placeholder
+    const volume = Math.round(45 + Math.random() * 30);
+    const score = Math.round(0.4 * momentum + 0.4 * trend + 0.2 * volume);
+    return { score, momentum, trend, volume };
+}
+
+// ===== MA line =====
+function calcMA(candles, period) {
+    const ma = [];
+    for (let i = period - 1; i < candles.length; i++) {
+        let sum = 0;
+        for (let j = 0; j < period; j++) sum += candles[i - j].close;
+        ma.push({ time: candles[i].time, value: sum / period });
+    }
+    return ma;
+}
+
+// ===== UI =====
+function updateAIPanel(cts) {
+    const el = document.getElementById('ai-score');
+    el.textContent = cts.score;
+    el.className = 'score ' + (cts.score >= 65 ? 'high' : cts.score >= 40 ? 'mid' : 'low');
+    ['momentum', 'trend', 'volume'].forEach(key => {
+        const v = cts[key];
+        document.getElementById('bar-' + key).style.width = v + '%';
+        document.getElementById('bar-' + key).style.background = v >= 65 ? '#ef4444' : v >= 40 ? '#eab308' : '#22c55e';
+        const lbl = document.getElementById('bar-' + key + '-label');
+        lbl.textContent = v >= 65 ? '強勢' : v >= 40 ? '中性' : '偏弱';
+        lbl.style.color = v >= 65 ? '#ef4444' : v >= 40 ? '#eab308' : '#22c55e';
+    });
+}
+
+function updateBadges(sym) {
+    document.getElementById('badge-daily').textContent = sym + ' 1分K';
+    document.getElementById('badge-60m').textContent = sym + ' 60分';
+    document.getElementById('badge-15m').textContent = sym + ' 15分';
+    const s = [...twStocks, ...usStocks].find(x => x.id === sym);
+    document.getElementById('ai-stock-name').textContent = sym + (s ? ' ' + s.name : '');
+}
+
+function setLoading(id, show) {
+    const el = document.getElementById('loading-' + id);
+    if (el) el.style.display = show ? 'block' : 'none';
+}
+
+// ===== Load Stock =====
+async function loadStock(symbol) {
+    currentStock = [...twStocks, ...usStocks].find(s => s.id === symbol) || { id: symbol, name: '' };
+    updateBadges(symbol);
+
+    // Destroy old charts
+    Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].chart.remove(); charts[k] = null; } });
+    ['daily', '60m', '15m'].forEach(id => setLoading(id, true));
+
+    // Create fresh charts
+    charts.daily = makeChart('chart-daily');
+    charts['60m'] = makeChart('chart-60m');
+    charts['15m'] = makeChart('chart-15m');
+
+    // Fetch data
+    const data = await fetchKLineData(symbol, DATA_DATE, '1m');
+
+    if (data && data.length > 0) {
+        const { candles, volumes } = apiToCandles(data, DATA_DATE);
+
+        // 1-min chart (daily view)
+        if (charts.daily) {
+            charts.daily.candleSeries.setData(candles);
+            charts.daily.volumeSeries.setData(volumes);
+            // MA20 line
+            const ma20 = calcMA(candles, 20);
+            const maLine = charts.daily.chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#facc15', lineWidth: 1, priceLineVisible: false,
             });
-        }, 500);
-
-        // === Mobile Sidebar Toggle ===
-        const hamburger = document.getElementById('hamburger');
-        const sidebar = document.getElementById('sidebar');
-        const overlay = document.getElementById('mobile-overlay');
-        function toggleSidebar() {
-            sidebar.classList.toggle('open');
-            overlay.classList.toggle('open');
+            maLine.setData(ma20);
+            charts.daily.chart.timeScale().fitContent();
         }
-        hamburger.addEventListener('click', toggleSidebar);
-        overlay.addEventListener('click', toggleSidebar);
-        const origSwitch = switchStock;
-        switchStock = function(stock) {
-            origSwitch(stock);
-            if (window.innerWidth <= 768) {
-                sidebar.classList.remove('open');
-                overlay.classList.remove('open');
-            }
-        };
+        setLoading('daily', false);
 
-        // === Keyboard Navigation ===
-        document.addEventListener('keydown', (e) => {
-            const filtered = activeFilter === 'all' ? stocks : stocks.filter(s => s.market === activeFilter);
-            const idx = filtered.findIndex(s => s.id === activeStock.id);
-            if (idx < 0) return;
-            if (e.key === 'ArrowDown' || e.key === 'j') {
-                e.preventDefault();
-                const next = (idx + 1) % filtered.length;
-                switchStock(filtered[next]);
-            } else if (e.key === 'ArrowUp' || e.key === 'k') {
-                e.preventDefault();
-                const prev = (idx - 1 + filtered.length) % filtered.length;
-                switchStock(filtered[prev]);
-            } else if (e.key === '1') {
-                document.querySelector('[data-filter="tw"]').click();
-            } else if (e.key === '2') {
-                document.querySelector('[data-filter="us"]').click();
-            } else if (e.key === '3') {
-                document.querySelector('[data-filter="all"]').click();
-            }
-        });
-
-        // === 15m / 5s Timeframe Toggle ===
-        let shortTF = '15m'; // '15m' or '5s'
-        document.getElementById('tf-toggle').addEventListener('click', () => {
-            shortTF = shortTF === '15m' ? '5s' : '15m';
-            document.getElementById('tf-toggle').textContent = shortTF === '15m' ? '15m ⇄ 5s' : '5s ⇄ 15m';
-            refreshShortTF();
-        });
-
-        function refreshShortTF() {
-            const stock = activeStock;
-            const badge = document.getElementById('badge-15m');
-            if (charts['15m']) { charts['15m'].chart.remove(); delete charts['15m']; }
-
-            if (shortTF === '5s') {
-                badge.textContent = stock.id + ' 5秒';
-                const d5s = generateOHLC(stock, '5s', 200, 5, stock.price);
-                charts['15m'] = createChart('chart-15m', d5s.data, d5s.volumeData, d5s.maData, false);
-                activeCandles['15m'] = d5s.data[d5s.data.length - 1];
-            } else {
-                badge.textContent = stock.id + ' 15分';
-                const d15 = generateOHLC(stock, '15m', 100, 900, stock.price);
-                charts['15m'] = createChart('chart-15m', d15.data, d15.volumeData, d15.maData, false);
-                activeCandles['15m'] = d15.data[d15.data.length - 1];
-            }
+        // 60-min
+        const b60 = aggregateBars(candles, volumes, 60);
+        if (charts['60m'] && b60.candles.length) {
+            charts['60m'].candleSeries.setData(b60.candles);
+            charts['60m'].volumeSeries.setData(b60.volumes);
+            charts['60m'].chart.timeScale().fitContent();
         }
+        setLoading('60m', false);
 
-        // === 5s New Candle Timer ===
-        setInterval(() => {
-            if (shortTF !== '5s' || !charts['15m']) return;
-            const s = activeStock;
-            const prev = activeCandles['15m'];
-            const newTime = prev.time + 5;
-            const newBar = { time: newTime, open: s.price, high: s.price, low: s.price, close: s.price };
-            activeCandles['15m'] = newBar;
-            charts['15m'].series.update(newBar);
-        }, 5000);
+        // 15-min
+        const b15 = aggregateBars(candles, volumes, 15);
+        if (charts['15m'] && b15.candles.length) {
+            charts['15m'].candleSeries.setData(b15.candles);
+            charts['15m'].volumeSeries.setData(b15.volumes);
+            charts['15m'].chart.timeScale().fitContent();
+        }
+        setLoading('15m', false);
 
-        // === Init ===
-        switchStock(stocks[0]);
-    </script>
+        // CTS
+        updateAIPanel(calcCTS(candles));
+        document.getElementById('data-info').textContent = '數據: ' + DATA_DATE + ' 真實行情';
+    } else {
+        // Fallback random
+        loadFallback();
+    }
+    renderList();
+}
+
+function loadFallback() {
+    ['daily', '60m', '15m'].forEach(key => {
+        if (!charts[key]) return;
+        const data = [], vols = [];
+        let t = Math.floor(Date.now() / 1000) - 100 * 86400, p = 150;
+        for (let i = 0; i < 100; i++) {
+            const o = p, c = p * (1 + (Math.random() - 0.48) * 0.04);
+            const h = Math.max(o, c) * 1.008, l = Math.min(o, c) * 0.992;
+            data.push({ time: t + i * 86400, open: o, high: h, low: l, close: c });
+            vols.push({ time: t + i * 86400, value: Math.random() * 5000 + 500, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
+            p = c;
+        }
+        charts[key].candleSeries.setData(data);
+        charts[key].volumeSeries.setData(vols);
+        charts[key].chart.timeScale().fitContent();
+        setLoading(key, false);
+    });
+    updateAIPanel({ score: 50, momentum: 50, trend: 50, volume: 50 });
+    document.getElementById('data-info').textContent = '模擬數據（無真實行情）';
+}
+
+// ===== Watchlist =====
+function getStocks() {
+    if (currentTab === 'tw') return twStocks;
+    if (currentTab === 'us') return usStocks;
+    return [...twStocks, ...usStocks];
+}
+
+function renderList() {
+    const el = document.getElementById('watchlist');
+    if (!el) return;
+    el.innerHTML = '';
+    getStocks().forEach(s => {
+        const div = document.createElement('div');
+        div.className = 'stock-row' + (s.id === currentStock.id ? ' active' : '');
+        div.id = 'row-' + s.id;
+        div.onclick = () => loadStock(s.id);
+        const pd = s.price >= 100 ? s.price.toFixed(0) : s.price.toFixed(2);
+        div.innerHTML = `<div class="stock-info"><span class="symbol">${s.id}</span><span class="name">${s.name}</span></div><div class="price-box"><div class="price text-up" id="price-${s.id}">${pd}</div><div class="change text-up">+0.5%</div></div>`;
+        el.appendChild(div);
+    });
+}
+
+function switchTab(tab) {
+    currentTab = tab;
+    document.querySelectorAll('.tab').forEach((t, i) => t.className = 'tab' + (['tw', 'us', 'all'][i] === tab ? ' active' : ''));
+    renderList();
+}
+
+// ===== Keyboard =====
+document.addEventListener('keydown', e => {
+    const stocks = getStocks();
+    const idx = stocks.findIndex(s => s.id === currentStock.id);
+    if (e.key === 'ArrowUp' && idx > 0) loadStock(stocks[idx - 1].id);
+    if (e.key === 'ArrowDown' && idx < stocks.length - 1) loadStock(stocks[idx + 1].id);
+});
+
+// ===== Price ticker =====
+setInterval(() => {
+    [...twStocks, ...usStocks].forEach(s => {
+        const old = s.price;
+        s.price += (Math.random() - 0.5) * s.price * 0.001;
+        const el = document.getElementById('price-' + s.id);
+        const row = document.getElementById('row-' + s.id);
+        if (el) {
+            el.textContent = s.price >= 100 ? s.price.toFixed(0) : s.price.toFixed(2);
+            el.className = 'price ' + (s.price > old ? 'text-up' : 'text-down');
+        }
+        if (row) {
+            row.classList.add(s.price > old ? 'flash-up' : 'flash-down');
+            setTimeout(() => { row.classList.remove('flash-up', 'flash-down'); }, 500);
+        }
+    });
+}, 1200);
+
+// ===== Init =====
+(function init() {
+    if (typeof LightweightCharts === 'undefined') {
+        document.body.innerHTML = '<div style="color:red;padding:40px;font-size:18px">圖表庫載入失敗，請重新整理。</div>';
+        return;
+    }
+    // v5 check: if addSeries doesn't exist on chart, fall back to v4 API
+    loadStock('2330');
+})();
+</script>
 </body>
 </html>
