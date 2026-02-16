@@ -65,7 +65,7 @@
 <header>
     <div class="logo">
         <div class="logo-icon">K</div>
-        <span>KStation <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.5</span></span>
+        <span>KStation <span style="font-weight:normal; color:#6b7280; font-size:12px;">v1.6 Futures</span></span>
     </div>
     <div class="header-right">
         <span class="hotkey-hint">↑↓ 切換 · Click 選股</span>
@@ -75,36 +75,35 @@
 <div class="main-container">
     <aside>
         <div class="tabs">
-            <div class="tab active" onclick="switchTab('tw')">台股</div>
-            <div class="tab" onclick="switchTab('us')">美股</div>
-            <div class="tab" onclick="switchTab('all')">全部</div>
+            <div class="tab active" onclick="switchTab('futures')">個股期</div>
+            <div class="tab" onclick="switchTab('tw')">現貨</div>
         </div>
         <div class="watchlist" id="watchlist"></div>
     </aside>
     <main>
         <div class="panel">
             <div class="panel-header">
-                <span class="badge" id="badge-daily">2330 1分K</span>
+                <span class="badge" id="badge-daily">-- 1分K</span>
                 <span class="badge" style="color:#facc15">MA20</span>
             </div>
             <div id="chart-daily" class="chart-div"></div>
             <div class="loading" id="loading-daily">載入中...</div>
         </div>
         <div class="panel">
-            <div class="panel-header"><span class="badge" id="badge-60m">2330 60分</span></div>
+            <div class="panel-header"><span class="badge" id="badge-60m">-- 60分</span></div>
             <div id="chart-60m" class="chart-div"></div>
             <div class="loading" id="loading-60m">載入中...</div>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="badge" id="badge-15m">2330 15分</span>
+                <span class="badge" id="badge-15m">-- 15分</span>
             </div>
             <div id="chart-15m" class="chart-div"></div>
             <div class="loading" id="loading-15m">載入中...</div>
         </div>
         <div class="panel ai-panel" id="ai-panel">
             <div class="ai-title">AI 趨勢評分</div>
-            <div class="ai-stock-name" id="ai-stock-name">2330 台積電</div>
+            <div class="ai-stock-name" id="ai-stock-name">--</div>
             <div class="score high" id="ai-score">--</div>
             <div class="bar-container">
                 <div class="bar-row"><span>動能</span><span id="bar-momentum-label">--</span></div>
@@ -123,29 +122,34 @@
 const API_BASE = 'https://hts2.tail45e5a8.ts.net/api';
 const DATA_DATE = '20260211';
 
+// Static fallback lists
 const twStocks = [
-    { id: '2330', name: '台積電', price: 1920 },
-    { id: '2317', name: '鴻海', price: 208 },
-    { id: '2454', name: '聯發科', price: 1585 },
-    { id: '2881', name: '富邦金', price: 92 },
-    { id: '2882', name: '國泰金', price: 68 },
-    { id: '2303', name: '聯電', price: 54 },
-    { id: '3008', name: '大立光', price: 2280 },
-    { id: '2412', name: '中華電', price: 128 },
-    { id: '6505', name: '台塑化', price: 72 },
-    { id: '1301', name: '台塑', price: 52 },
+    { stockId: '2330', name: '台積電', price: 1920 },
+    { stockId: '2317', name: '鴻海', price: 208 },
+    { stockId: '2454', name: '聯發科', price: 1585 },
 ];
-const usStocks = [
-    { id: 'NVDA', name: '輝達', price: 186.94 },
-    { id: 'TSLA', name: '特斯拉', price: 435.20 },
-    { id: 'AAPL', name: '蘋果', price: 255.41 },
-];
+let futuresList = [];
 
-let currentStock = twStocks[0];
-let currentTab = 'tw';
+let currentProduct = null;
+let currentTab = 'futures';
 let charts = {};
 
 // ===== API =====
+async function fetchProductList() {
+    try {
+        const resp = await fetch(API_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiType: 'getProductList' })
+        });
+        const json = await resp.json();
+        if (json.status === 'success') {
+            return json.data.map(p => ({ ...p, price: 0 })); // Add dummy price for UI
+        }
+        return [];
+    } catch(e) { console.error(e); return []; }
+}
+
 async function fetchKLineData(symbol, date, type) {
     try {
         const resp = await fetch(API_BASE, {
@@ -153,14 +157,10 @@ async function fetchKLineData(symbol, date, type) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ apiType: 'getKLine', symbol: symbol, date: date, type: type || '1m' })
         });
-        // Handle gzip - browser auto-decompresses
-        const text = await resp.text();
-        const json = JSON.parse(text);
+        const json = await resp.json();
         if (json.status === 'success' && json.data) return json.data;
-        console.warn('API err:', json.emsg || json);
         return null;
     } catch (e) {
-        console.error('fetchKLineData error:', e);
         return null;
     }
 }
@@ -175,7 +175,8 @@ function apiToCandles(apiData, dateStr) {
     apiData.forEach(bar => {
         const hh = Math.floor(bar.time / 100);
         const mm = bar.time % 100;
-        const ts = Math.floor(new Date(y, m, d, hh, mm).getTime() / 1000);
+        // Fix timezone: Use UTC to ensure chart shows exact HH:MM
+        const ts = Math.floor(Date.UTC(y, m, d, hh, mm) / 1000);
         const o = bar.open / 100, h = bar.high / 100, l = bar.low / 100, c = bar.close / 100;
         candles.push({ time: ts, open: o, high: h, low: l, close: c });
         volumes.push({ time: ts, value: bar.vol, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
@@ -209,8 +210,6 @@ function aggregateBars(candles, volumes, minutes) {
 function makeChart(containerId) {
     const el = document.getElementById(containerId);
     if (!el) return null;
-
-    // v5 API: createChart is on the module
     const chart = LightweightCharts.createChart(el, {
         layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
         grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
@@ -218,79 +217,58 @@ function makeChart(containerId) {
         rightPriceScale: { borderColor: '#374151' },
         crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
     });
-
-    // v5: addSeries with type
     const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
         upColor: '#ef4444', downColor: '#22c55e',
         borderUpColor: '#ef4444', borderDownColor: '#22c55e',
         wickUpColor: '#ef4444', wickDownColor: '#22c55e',
     });
-
     const volumeSeries = chart.addSeries(LightweightCharts.HistogramSeries, {
         priceFormat: { type: 'volume' },
         priceScaleId: 'vol',
     });
     chart.priceScale('vol').applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-
     new ResizeObserver(entries => {
         if (!entries.length) return;
         const { width, height } = entries[0].contentRect;
         chart.applyOptions({ width, height });
     }).observe(el);
-
     return { chart, candleSeries, volumeSeries };
 }
 
-// ===== CTS Score =====
+// ===== UI Logic =====
 function calcCTS(candles) {
     if (!candles || candles.length < 25) return { score: 50, momentum: 50, trend: 50, volume: 50 };
     const closes = candles.map(c => c.close);
     const n = closes.length;
-    function ma(period) {
-        let s = 0; for (let i = n - period; i < n; i++) s += closes[i]; return s / period;
-    }
-    const ma5 = ma(5), ma10 = ma(10), last = closes[n - 1];
-    const momentum = Math.round(50 + 50 * Math.tanh((last - ma5) / ma5 * 50));
-    const trend = Math.round(50 + 50 * Math.tanh((last - ma10) / ma10 * 35));
-    // Volume: compare last 5 avg vs last 20 avg
-    const vols = candles.map(c => c.close); // placeholder
-    const volume = Math.round(45 + Math.random() * 30);
-    const score = Math.round(0.4 * momentum + 0.4 * trend + 0.2 * volume);
+    function ma(period) { let s=0; for(let i=n-period;i<n;i++) s+=closes[i]; return s/period; }
+    const ma5 = ma(5), ma10 = ma(10), last = closes[n-1];
+    const momentum = Math.round(50 + 50 * Math.tanh((last - ma5)/ma5*50));
+    const trend = Math.round(50 + 50 * Math.tanh((last - ma10)/ma10*35));
+    const volume = Math.round(45 + Math.random()*30);
+    const score = Math.round(0.4*momentum + 0.4*trend + 0.2*volume);
     return { score, momentum, trend, volume };
 }
 
-// ===== MA line =====
-function calcMA(candles, period) {
-    const ma = [];
-    for (let i = period - 1; i < candles.length; i++) {
-        let sum = 0;
-        for (let j = 0; j < period; j++) sum += candles[i - j].close;
-        ma.push({ time: candles[i].time, value: sum / period });
-    }
-    return ma;
-}
-
-// ===== UI =====
 function updateAIPanel(cts) {
     const el = document.getElementById('ai-score');
     el.textContent = cts.score;
     el.className = 'score ' + (cts.score >= 65 ? 'high' : cts.score >= 40 ? 'mid' : 'low');
     ['momentum', 'trend', 'volume'].forEach(key => {
         const v = cts[key];
-        document.getElementById('bar-' + key).style.width = v + '%';
-        document.getElementById('bar-' + key).style.background = v >= 65 ? '#ef4444' : v >= 40 ? '#eab308' : '#22c55e';
-        const lbl = document.getElementById('bar-' + key + '-label');
-        lbl.textContent = v >= 65 ? '強勢' : v >= 40 ? '中性' : '偏弱';
-        lbl.style.color = v >= 65 ? '#ef4444' : v >= 40 ? '#eab308' : '#22c55e';
+        document.getElementById('bar-'+key).style.width = v+'%';
+        document.getElementById('bar-'+key).style.background = v>=65?'#ef4444':v>=40?'#eab308':'#22c55e';
+        const lbl = document.getElementById('bar-'+key+'-label');
+        lbl.textContent = v>=65?'強勢':v>=40?'中性':'偏弱';
+        lbl.style.color = v>=65?'#ef4444':v>=40?'#eab308':'#22c55e';
     });
 }
 
-function updateBadges(sym) {
-    document.getElementById('badge-daily').textContent = sym + ' 1分K';
-    document.getElementById('badge-60m').textContent = sym + ' 60分';
-    document.getElementById('badge-15m').textContent = sym + ' 15分';
-    const s = [...twStocks, ...usStocks].find(x => x.id === sym);
-    document.getElementById('ai-stock-name').textContent = sym + (s ? ' ' + s.name : '');
+function updateBadges(product) {
+    const name = product.futureId ? `${product.name} (${product.futureId})` : product.name;
+    document.getElementById('badge-daily').textContent = name + ' 1分K';
+    document.getElementById('badge-60m').textContent = name + ' 60分';
+    document.getElementById('badge-15m').textContent = name + ' 15分';
+    document.getElementById('ai-stock-name').textContent = name;
 }
 
 function setLoading(id, show) {
@@ -298,41 +276,39 @@ function setLoading(id, show) {
     if (el) el.style.display = show ? 'block' : 'none';
 }
 
-// ===== Load Stock =====
-async function loadStock(symbol) {
-    currentStock = [...twStocks, ...usStocks].find(s => s.id === symbol) || { id: symbol, name: '' };
-    updateBadges(symbol);
-
-    // Destroy old charts
-    Object.keys(charts).forEach(k => { if (charts[k]) { charts[k].chart.remove(); charts[k] = null; } });
-    ['daily', '60m', '15m'].forEach(id => setLoading(id, true));
-
-    // Create fresh charts
+async function loadProduct(product) {
+    currentProduct = product;
+    updateBadges(product);
+    
+    // Destroy old
+    Object.keys(charts).forEach(k => { if(charts[k]) { charts[k].chart.remove(); charts[k] = null; } });
+    ['daily','60m','15m'].forEach(id => setLoading(id, true));
+    
     charts.daily = makeChart('chart-daily');
     charts['60m'] = makeChart('chart-60m');
     charts['15m'] = makeChart('chart-15m');
-
-    // Fetch data
-    const data = await fetchKLineData(symbol, DATA_DATE, '1m');
-
+    
+    // Fetch Underlying Stock Data
+    const data = await fetchKLineData(product.stockId, DATA_DATE, '1m');
+    
     if (data && data.length > 0) {
         const { candles, volumes } = apiToCandles(data, DATA_DATE);
-
-        // 1-min chart (daily view)
+        
         if (charts.daily) {
             charts.daily.candleSeries.setData(candles);
             charts.daily.volumeSeries.setData(volumes);
-            // MA20 line
-            const ma20 = calcMA(candles, 20);
-            const maLine = charts.daily.chart.addSeries(LightweightCharts.LineSeries, {
-                color: '#facc15', lineWidth: 1, priceLineVisible: false,
-            });
-            maLine.setData(ma20);
+            // MA20
+            const ma = [];
+            for (let i=19; i<candles.length; i++) {
+                let s=0; for(let j=0; j<20; j++) s+=candles[i-j].close;
+                ma.push({ time: candles[i].time, value: s/20 });
+            }
+            const maLine = charts.daily.chart.addSeries(LightweightCharts.LineSeries, { color: '#facc15', lineWidth: 1, priceLineVisible: false });
+            maLine.setData(ma);
             charts.daily.chart.timeScale().fitContent();
         }
         setLoading('daily', false);
-
-        // 60-min
+        
         const b60 = aggregateBars(candles, volumes, 60);
         if (charts['60m'] && b60.candles.length) {
             charts['60m'].candleSeries.setData(b60.candles);
@@ -340,8 +316,7 @@ async function loadStock(symbol) {
             charts['60m'].chart.timeScale().fitContent();
         }
         setLoading('60m', false);
-
-        // 15-min
+        
         const b15 = aggregateBars(candles, volumes, 15);
         if (charts['15m'] && b15.candles.length) {
             charts['15m'].candleSeries.setData(b15.candles);
@@ -349,100 +324,70 @@ async function loadStock(symbol) {
             charts['15m'].chart.timeScale().fitContent();
         }
         setLoading('15m', false);
-
-        // CTS
+        
         updateAIPanel(calcCTS(candles));
-        document.getElementById('data-info').textContent = '數據: ' + DATA_DATE + ' 真實行情';
+        document.getElementById('data-info').textContent = '數據來源: ' + DATA_DATE + ' 真實行情 (現貨)';
     } else {
-        // Fallback random
-        loadFallback();
+        // Fallback
+        ['daily','60m','15m'].forEach(k => setLoading(k, false));
+        document.getElementById('data-info').textContent = '無資料';
     }
     renderList();
-}
-
-function loadFallback() {
-    ['daily', '60m', '15m'].forEach(key => {
-        if (!charts[key]) return;
-        const data = [], vols = [];
-        let t = Math.floor(Date.now() / 1000) - 100 * 86400, p = 150;
-        for (let i = 0; i < 100; i++) {
-            const o = p, c = p * (1 + (Math.random() - 0.48) * 0.04);
-            const h = Math.max(o, c) * 1.008, l = Math.min(o, c) * 0.992;
-            data.push({ time: t + i * 86400, open: o, high: h, low: l, close: c });
-            vols.push({ time: t + i * 86400, value: Math.random() * 5000 + 500, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
-            p = c;
-        }
-        charts[key].candleSeries.setData(data);
-        charts[key].volumeSeries.setData(vols);
-        charts[key].chart.timeScale().fitContent();
-        setLoading(key, false);
-    });
-    updateAIPanel({ score: 50, momentum: 50, trend: 50, volume: 50 });
-    document.getElementById('data-info').textContent = '模擬數據（無真實行情）';
-}
-
-// ===== Watchlist =====
-function getStocks() {
-    if (currentTab === 'tw') return twStocks;
-    if (currentTab === 'us') return usStocks;
-    return [...twStocks, ...usStocks];
 }
 
 function renderList() {
     const el = document.getElementById('watchlist');
     if (!el) return;
     el.innerHTML = '';
-    getStocks().forEach(s => {
+    const list = currentTab === 'futures' ? futuresList : twStocks;
+    
+    list.forEach(item => {
         const div = document.createElement('div');
-        div.className = 'stock-row' + (s.id === currentStock.id ? ' active' : '');
-        div.id = 'row-' + s.id;
-        div.onclick = () => loadStock(s.id);
-        const pd = s.price >= 100 ? s.price.toFixed(0) : s.price.toFixed(2);
-        div.innerHTML = `<div class="stock-info"><span class="symbol">${s.id}</span><span class="name">${s.name}</span></div><div class="price-box"><div class="price text-up" id="price-${s.id}">${pd}</div><div class="change text-up">+0.5%</div></div>`;
+        const isActive = currentProduct && (item.futureId ? item.futureId === currentProduct.futureId : item.stockId === currentProduct.stockId);
+        div.className = 'stock-row' + (isActive ? ' active' : '');
+        div.onclick = () => loadProduct(item);
+        
+        const symbolDisplay = item.futureId ? item.futureId : item.stockId;
+        const subDisplay = item.futureId ? item.stockId : '';
+        
+        div.innerHTML = `
+            <div class="stock-info">
+                <span class="symbol">${symbolDisplay} <span style="font-weight:normal;color:#6b7280;font-size:11px">${subDisplay}</span></span>
+                <span class="name">${item.name}</span>
+            </div>
+            <div class="price-box">
+                <div class="price text-up">--</div>
+            </div>`;
         el.appendChild(div);
     });
 }
 
 function switchTab(tab) {
     currentTab = tab;
-    document.querySelectorAll('.tab').forEach((t, i) => t.className = 'tab' + (['tw', 'us', 'all'][i] === tab ? ' active' : ''));
+    document.querySelectorAll('.tab').forEach((t, i) => t.className = 'tab' + (['futures', 'tw'][i] === tab ? ' active' : ''));
     renderList();
 }
 
-// ===== Keyboard =====
-document.addEventListener('keydown', e => {
-    const stocks = getStocks();
-    const idx = stocks.findIndex(s => s.id === currentStock.id);
-    if (e.key === 'ArrowUp' && idx > 0) loadStock(stocks[idx - 1].id);
-    if (e.key === 'ArrowDown' && idx < stocks.length - 1) loadStock(stocks[idx + 1].id);
-});
-
-// ===== Price ticker =====
-setInterval(() => {
-    [...twStocks, ...usStocks].forEach(s => {
-        const old = s.price;
-        s.price += (Math.random() - 0.5) * s.price * 0.001;
-        const el = document.getElementById('price-' + s.id);
-        const row = document.getElementById('row-' + s.id);
-        if (el) {
-            el.textContent = s.price >= 100 ? s.price.toFixed(0) : s.price.toFixed(2);
-            el.className = 'price ' + (s.price > old ? 'text-up' : 'text-down');
-        }
-        if (row) {
-            row.classList.add(s.price > old ? 'flash-up' : 'flash-down');
-            setTimeout(() => { row.classList.remove('flash-up', 'flash-down'); }, 500);
-        }
-    });
-}, 1200);
-
 // ===== Init =====
-(function init() {
+(async function init() {
     if (typeof LightweightCharts === 'undefined') {
-        document.body.innerHTML = '<div style="color:red;padding:40px;font-size:18px">圖表庫載入失敗，請重新整理。</div>';
+        document.body.innerHTML = '<div style="color:red;padding:40px">圖表庫載入失敗</div>';
         return;
     }
-    // v5 check: if addSeries doesn't exist on chart, fall back to v4 API
-    loadStock('2330');
+    
+    // Load Futures List
+    const prods = await fetchProductList();
+    if (prods.length > 0) {
+        futuresList = prods;
+        loadProduct(futuresList[0]);
+    } else {
+        // Fallback if API fails
+        futuresList = [
+            { stockId: '2330', futureId: 'CDFC6', name: '台積電期03' },
+            { stockId: '2317', futureId: 'DHFC6', name: '鴻海期03' }
+        ];
+        loadProduct(futuresList[0]);
+    }
 })();
 </script>
 </body>
