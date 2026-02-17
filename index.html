@@ -37,10 +37,10 @@
         .panel { background: #111827; position: relative; display: flex; flex-direction: column; overflow: hidden; }
         .panel-header { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 10; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .badge { background: rgba(31, 41, 55, 0.9); border: 1px solid #374151; color: #f97316; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; }
-        .tf-group { display: flex; gap: 2px; margin-left: auto; }
-        .tf-btn { background: rgba(31, 41, 55, 0.85); border: 1px solid #374151; color: #6b7280; padding: 2px 7px; border-radius: 3px; font-size: 10px; cursor: pointer; font-family: monospace; transition: all 0.15s; }
-        .tf-btn:hover { color: #d1d5db; border-color: #4b5563; }
-        .tf-btn.active { color: #f97316; border-color: #f97316; background: rgba(249, 115, 22, 0.1); }
+        .tf-group { margin-left: auto; }
+        .tf-select { background: rgba(31, 41, 55, 0.9); border: 1px solid #374151; color: #f97316; padding: 2px 6px; border-radius: 4px; font-size: 11px; font-family: monospace; cursor: pointer; outline: none; appearance: auto; }
+        .tf-select:hover { border-color: #f97316; }
+        .tf-select option { background: #1f2937; color: #e5e7eb; }
         .chart-div { width: 100%; height: 100%; }
         .ai-panel { padding: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
         .ai-title { color: #6b7280; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
@@ -684,10 +684,8 @@ function updateBadge(panelIdx) {
     const name = currentProduct ? getProductName(currentProduct) : '--';
     const tf = TIMEFRAMES.find(t => t.key === panelTF[panelIdx]);
     document.getElementById('badge-' + panelIdx).textContent = name + ' ' + (tf ? tf.label : '');
-    const group = document.getElementById('tf-group-' + panelIdx);
-    if (group) group.querySelectorAll('.tf-btn').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.tf === panelTF[panelIdx]);
-    });
+    const sel = document.getElementById('tf-select-' + panelIdx);
+    if (sel) sel.value = panelTF[panelIdx];
 }
 
 function updateKBarCount(panelIdx) {
@@ -753,15 +751,19 @@ function initTFButtons() {
     for (let i = 0; i < 3; i++) {
         const group = document.getElementById('tf-group-' + i);
         if (!group) continue;
-        group.innerHTML = '';
+        const sel = document.createElement('select');
+        sel.className = 'tf-select';
+        sel.id = 'tf-select-' + i;
         TIMEFRAMES.forEach(tf => {
-            const btn = document.createElement('button');
-            btn.className = 'tf-btn' + (panelTF[i] === tf.key ? ' active' : '');
-            btn.textContent = tf.label;
-            btn.dataset.tf = tf.key;
-            btn.onclick = () => switchTF(i, tf.key);
-            group.appendChild(btn);
+            const opt = document.createElement('option');
+            opt.value = tf.key;
+            opt.textContent = tf.label;
+            if (panelTF[i] === tf.key) opt.selected = true;
+            sel.appendChild(opt);
         });
+        sel.onchange = ((idx) => () => switchTF(idx, sel.value))(i);
+        group.innerHTML = '';
+        group.appendChild(sel);
     }
 }
 
