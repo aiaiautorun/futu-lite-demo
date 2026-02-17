@@ -175,8 +175,8 @@ function apiToCandles(apiData, dateStr) {
     apiData.forEach(bar => {
         const hh = Math.floor(bar.time / 100);
         const mm = bar.time % 100;
-        // Fix timezone: Use UTC to ensure chart shows exact HH:MM
-        const ts = Math.floor(Date.UTC(y, m, d, hh, mm) / 1000);
+        // Data time is in Asia/Taipei (UTC+8). Convert to real UTC for correct display.
+        const ts = Math.floor(Date.UTC(y, m, d, hh, mm) / 1000) - 8 * 3600;
         const o = bar.open / 100, h = bar.high / 100, l = bar.low / 100, c = bar.close / 100;
         candles.push({ time: ts, open: o, high: h, low: l, close: c });
         volumes.push({ time: ts, value: bar.vol, color: c >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
