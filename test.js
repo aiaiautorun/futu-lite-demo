@@ -326,6 +326,49 @@ test('MACD histogram = macd - signal', () => {
     });
 });
 
+// --- daysForBars ---
+console.log('\ndaysForBars:');
+
+const TIMEFRAMES_T = [
+    { key: '1m', label: '1分', minutes: 1 },
+    { key: '5m', label: '5分', minutes: 5 },
+    { key: '15m', label: '15分', minutes: 15 },
+    { key: '30m', label: '30分', minutes: 30 },
+    { key: '60m', label: '60分', minutes: 60 },
+    { key: 'D', label: '日線', minutes: 0 },
+];
+
+function daysForBars(tfKey, barsPerDay) {
+    const target = 999;
+    if (tfKey === 'D') return 10;
+    const tf = TIMEFRAMES_T.find(t => t.key === tfKey);
+    if (!tf || tf.minutes === 0) return 1;
+    const barsPerDayAtTF = Math.ceil(barsPerDay / tf.minutes);
+    const days = Math.ceil(target / Math.max(barsPerDayAtTF, 1));
+    return Math.min(days, 30);
+}
+
+test('1m with 270 bars/day needs 4 days', () => {
+    assert.strictEqual(daysForBars('1m', 270), 4);
+});
+
+test('5m with 270 bars/day needs 19 days', () => {
+    assert.strictEqual(daysForBars('5m', 270), 19);
+});
+
+test('15m with 270 bars/day needs 30 days (capped)', () => {
+    // 270/15=18 bars/day, 999/18=56 → capped at 30
+    assert.strictEqual(daysForBars('15m', 270), 30);
+});
+
+test('60m with 270 bars/day needs 30 days (capped)', () => {
+    assert.strictEqual(daysForBars('60m', 270), 30);
+});
+
+test('daily always returns 10', () => {
+    assert.strictEqual(daysForBars('D', 270), 10);
+});
+
 // --- calcCTS ---
 console.log('\ncalcCTS:');
 

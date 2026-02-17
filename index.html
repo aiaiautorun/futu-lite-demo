@@ -187,7 +187,9 @@ let futuresList = [];
 let currentProduct = null;
 let currentTab = 'futures';
 let charts = {};
-let rawCandles = [], rawVolumes = []; // cached 1m data
+let rawCandles = [], rawVolumes = []; // cached 1m data (single day from loadProduct)
+// Multi-day 1m cache: { symbol: { dateStr: { candles, volumes } } }
+let multiDayCache = {};
 // Per-panel candle/volume data (after aggregation)
 let panelCandles = [[], [], []], panelVolumes = [[], [], []];
 // Per-panel active indicators
@@ -305,6 +307,50 @@ function getTradingDays(endDateStr, count) {
         dt.setDate(dt.getDate() - 1);
     }
     return dates;
+}
+
+// Calculate how many trading days needed to get ~999 bars at a given timeframe
+function daysForBars(tfKey, barsPerDay) {
+    const target = 999;
+    if (tfKey === 'D') return 10; // daily handled separately
+    const tf = TIMEFRAMES.find(t => t.key === tfKey);
+    if (!tf || tf.minutes === 0) return 1;
+    const barsPerDayAtTF = Math.ceil(barsPerDay / tf.minutes);
+    const days = Math.ceil(target / Math.max(barsPerDayAtTF, 1));
+    return Math.min(days, 30); // cap at 30 days
+}
+
+// Fetch N trading days of 1m data, merge into one sorted array
+async function fetchMultiDay1m(symbol, endDateStr, numDays, onProgress) {
+    const tradingDays = getTradingDays(endDateStr, numDays);
+    const allResults = [];
+    let done = 0;
+    const concurrency = 3;
+    let idx = 0;
+    async function next() {
+        while (idx < tradingDays.length) {
+            const i = idx++;
+            const dateStr = tradingDays[i];
+            const cacheKey = `${symbol}_${dateStr}`;
+            if (!multiDayCache[cacheKey]) {
+                const raw = await fetchKLineData(symbol, dateStr, '1m');
+                multiDayCache[cacheKey] = apiToCandles(raw || [], dateStr);
+            }
+            allResults[i] = { dateStr, data: multiDayCache[cacheKey] };
+            done++;
+            if (onProgress) onProgress(done, tradingDays.length);
+        }
+    }
+    await Promise.all(Array.from({length: Math.min(concurrency, tradingDays.length)}, () => next()));
+    // Merge all days' candles/volumes in order
+    const merged = { candles: [], volumes: [] };
+    allResults.forEach(r => {
+        if (r && r.data) {
+            merged.candles.push(...r.data.candles);
+            merged.volumes.push(...r.data.volumes);
+        }
+    });
+    return merged;
 }
 
 async function fetchDailyData(symbol, endDateStr, numDays, onProgress) {
@@ -708,7 +754,7 @@ function updateKBarCount(panelIdx) {
 }
 
 async function renderPanel(panelIdx) {
-    if (!rawCandles.length && panelTF[panelIdx] !== 'D') return;
+    if (!currentProduct) return;
     // Destroy old chart
     if (charts[panelIdx]) { charts[panelIdx].chart.remove(); charts[panelIdx] = null; }
     panelIndSeries[panelIdx] = {};
@@ -716,28 +762,46 @@ async function renderPanel(panelIdx) {
 
     const tfKey = panelTF[panelIdx];
     const isDaily = tfKey === 'D';
+    const loadEl = document.getElementById('loading-' + panelIdx);
     charts[panelIdx] = makeChart('chart-' + panelIdx, isDaily);
     if (!charts[panelIdx]) return;
 
     let candles, volumes;
+    const symbol = currentProduct.stockId;
 
     if (isDaily) {
-        // Fetch multi-day data
-        const symbol = currentProduct.stockId;
-        const loadEl = document.getElementById('loading-' + panelIdx);
         const result = await fetchDailyData(symbol, DATA_DATE, 10, (done, total) => {
             if (loadEl) loadEl.textContent = `載入日線 ${done}/${total}...`;
         });
         candles = result.candles;
         volumes = result.volumes;
-    } else if (tfKey === '1m') {
-        candles = rawCandles;
-        volumes = rawVolumes;
     } else {
-        const tf = TIMEFRAMES.find(t => t.key === tfKey);
-        const agg = aggregateBars(rawCandles, rawVolumes, tf.minutes);
-        candles = agg.candles;
-        volumes = agg.volumes;
+        // Calculate days needed for ~999 bars
+        const barsPerDay = rawCandles.length || 270;
+        const needDays = daysForBars(tfKey, barsPerDay);
+
+        let srcCandles, srcVolumes;
+        if (needDays <= 1) {
+            srcCandles = rawCandles;
+            srcVolumes = rawVolumes;
+        } else {
+            if (loadEl) loadEl.textContent = `載入 ${needDays} 天資料...`;
+            const merged = await fetchMultiDay1m(symbol, DATA_DATE, needDays, (done, total) => {
+                if (loadEl) loadEl.textContent = `載入資料 ${done}/${total} 天...`;
+            });
+            srcCandles = merged.candles;
+            srcVolumes = merged.volumes;
+        }
+
+        if (tfKey === '1m') {
+            candles = srcCandles;
+            volumes = srcVolumes;
+        } else {
+            const tf = TIMEFRAMES.find(t => t.key === tfKey);
+            const agg = aggregateBars(srcCandles, srcVolumes, tf.minutes);
+            candles = agg.candles;
+            volumes = agg.volumes;
+        }
     }
 
     panelCandles[panelIdx] = candles;
