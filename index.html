@@ -310,30 +310,26 @@ function getTradingDays(endDateStr, count) {
 async function fetchDailyData(symbol, endDateStr, numDays) {
     const tradingDays = getTradingDays(endDateStr, numDays);
     const dailyCandles = [], dailyVolumes = [];
-    // Fetch in parallel batches of 10
-    for (let b = 0; b < tradingDays.length; b += 10) {
-        const batch = tradingDays.slice(b, b + 10);
-        const results = await Promise.all(batch.map(async dateStr => {
-            const cacheKey = `${symbol}_${dateStr}`;
-            if (dailyCache[cacheKey]) return { dateStr, data: dailyCache[cacheKey] };
-            const data = await fetchKLineData(symbol, dateStr, '1m');
-            const parsed = apiToCandles(data || [], dateStr);
-            dailyCache[cacheKey] = parsed;
-            return { dateStr, data: parsed };
-        }));
-        results.forEach(({ dateStr, data }) => {
-            if (!data.candles.length) return;
-            const c = data.candles, v = data.volumes;
-            const o = c[0].open, cl = c[c.length - 1].close;
-            let hi = -Infinity, lo = Infinity, vol = 0;
-            c.forEach(bar => { hi = Math.max(hi, bar.high); lo = Math.min(lo, bar.low); });
-            v.forEach(bar => { vol += bar.value; });
-            // Use business day format: yyyy-mm-dd string
-            const dayStr = dateStr.substring(0, 4) + '-' + dateStr.substring(4, 6) + '-' + dateStr.substring(6, 8);
-            dailyCandles.push({ time: dayStr, open: o, high: hi, low: lo, close: cl });
-            dailyVolumes.push({ time: dayStr, value: vol, color: cl >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
-        });
-    }
+    // Fetch all days in parallel (cached results return instantly)
+    const results = await Promise.all(tradingDays.map(async dateStr => {
+        const cacheKey = `${symbol}_${dateStr}`;
+        if (dailyCache[cacheKey]) return { dateStr, data: dailyCache[cacheKey] };
+        const data = await fetchKLineData(symbol, dateStr, '1m');
+        const parsed = apiToCandles(data || [], dateStr);
+        dailyCache[cacheKey] = parsed;
+        return { dateStr, data: parsed };
+    }));
+    results.forEach(({ dateStr, data }) => {
+        if (!data.candles.length) return;
+        const c = data.candles, v = data.volumes;
+        const o = c[0].open, cl = c[c.length - 1].close;
+        let hi = -Infinity, lo = Infinity, vol = 0;
+        c.forEach(bar => { hi = Math.max(hi, bar.high); lo = Math.min(lo, bar.low); });
+        v.forEach(bar => { vol += bar.value; });
+        const dayStr = dateStr.substring(0, 4) + '-' + dateStr.substring(4, 6) + '-' + dateStr.substring(6, 8);
+        dailyCandles.push({ time: dayStr, open: o, high: hi, low: lo, close: cl });
+        dailyVolumes.push({ time: dayStr, value: vol, color: cl >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
+    });
     return { candles: dailyCandles, volumes: dailyVolumes };
 }
 
@@ -716,7 +712,7 @@ async function renderPanel(panelIdx) {
     if (isDaily) {
         // Fetch multi-day data
         const symbol = currentProduct.stockId;
-        const result = await fetchDailyData(symbol, DATA_DATE, 60);
+        const result = await fetchDailyData(symbol, DATA_DATE, 20);
         candles = result.candles;
         volumes = result.volumes;
     } else if (tfKey === '1m') {
