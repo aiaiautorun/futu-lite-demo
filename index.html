@@ -35,8 +35,12 @@
         .text-down { color: #22c55e; }
         main { flex: 1; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 1px; background: #000; padding: 1px; }
         .panel { background: #111827; position: relative; display: flex; flex-direction: column; overflow: hidden; }
-        .panel-header { position: absolute; top: 8px; left: 8px; z-index: 10; display: flex; gap: 8px; align-items: center; }
+        .panel-header { position: absolute; top: 8px; left: 8px; right: 8px; z-index: 10; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
         .badge { background: rgba(31, 41, 55, 0.9); border: 1px solid #374151; color: #f97316; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; font-family: monospace; }
+        .tf-group { display: flex; gap: 2px; margin-left: auto; }
+        .tf-btn { background: rgba(31, 41, 55, 0.85); border: 1px solid #374151; color: #6b7280; padding: 2px 7px; border-radius: 3px; font-size: 10px; cursor: pointer; font-family: monospace; transition: all 0.15s; }
+        .tf-btn:hover { color: #d1d5db; border-color: #4b5563; }
+        .tf-btn.active { color: #f97316; border-color: #f97316; background: rgba(249, 115, 22, 0.1); }
         .chart-div { width: 100%; height: 100%; }
         .ai-panel { padding: 20px; display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; }
         .ai-title { color: #6b7280; font-size: 12px; letter-spacing: 1px; text-transform: uppercase; }
@@ -95,23 +99,28 @@
     <main>
         <div class="panel">
             <div class="panel-header">
-                <span class="badge" id="badge-daily">-- 1分K</span>
+                <span class="badge" id="badge-0">-- 1分K</span>
                 <span class="badge" style="color:#facc15">MA20</span>
+                <div class="tf-group" id="tf-group-0"></div>
             </div>
-            <div id="chart-daily" class="chart-div"></div>
-            <div class="loading" id="loading-daily">載入中...</div>
-        </div>
-        <div class="panel">
-            <div class="panel-header"><span class="badge" id="badge-60m">-- 60分</span></div>
-            <div id="chart-60m" class="chart-div"></div>
-            <div class="loading" id="loading-60m">載入中...</div>
+            <div id="chart-0" class="chart-div"></div>
+            <div class="loading" id="loading-0">載入中...</div>
         </div>
         <div class="panel">
             <div class="panel-header">
-                <span class="badge" id="badge-15m">-- 15分</span>
+                <span class="badge" id="badge-1">-- 60分</span>
+                <div class="tf-group" id="tf-group-1"></div>
             </div>
-            <div id="chart-15m" class="chart-div"></div>
-            <div class="loading" id="loading-15m">載入中...</div>
+            <div id="chart-1" class="chart-div"></div>
+            <div class="loading" id="loading-1">載入中...</div>
+        </div>
+        <div class="panel">
+            <div class="panel-header">
+                <span class="badge" id="badge-2">-- 15分</span>
+                <div class="tf-group" id="tf-group-2"></div>
+            </div>
+            <div id="chart-2" class="chart-div"></div>
+            <div class="loading" id="loading-2">載入中...</div>
         </div>
         <div class="panel ai-panel" id="ai-panel">
             <div class="ai-title">AI 趨勢評分 <button class="info-btn" onclick="toggleModal(true)" title="算法說明">?</button></div>
@@ -164,6 +173,18 @@ let futuresList = [];
 let currentProduct = null;
 let currentTab = 'futures';
 let charts = {};
+let rawCandles = [], rawVolumes = []; // cached 1m data
+
+const TIMEFRAMES = [
+    { key: '1m', label: '1分', minutes: 1 },
+    { key: '5m', label: '5分', minutes: 5 },
+    { key: '15m', label: '15分', minutes: 15 },
+    { key: '30m', label: '30分', minutes: 30 },
+    { key: '60m', label: '60分', minutes: 60 },
+    { key: 'D', label: '日線', minutes: 0 },
+];
+// Default timeframe per panel index
+const panelTF = ['1m', '60m', '15m'];
 
 // ===== API =====
 async function fetchProductList() {
@@ -318,12 +339,8 @@ function updateAIPanel(cts) {
     });
 }
 
-function updateBadges(product) {
-    const name = product.futureId ? `${product.name} (${product.futureId})` : product.name;
-    document.getElementById('badge-daily').textContent = name + ' 1分K';
-    document.getElementById('badge-60m').textContent = name + ' 60分';
-    document.getElementById('badge-15m').textContent = name + ' 15分';
-    document.getElementById('ai-stock-name').textContent = name;
+function getProductName(product) {
+    return product.futureId ? `${product.name} (${product.futureId})` : product.name;
 }
 
 function setLoading(id, show) {
@@ -331,60 +348,101 @@ function setLoading(id, show) {
     if (el) el.style.display = show ? 'block' : 'none';
 }
 
+function updateBadge(panelIdx) {
+    const name = currentProduct ? getProductName(currentProduct) : '--';
+    const tf = TIMEFRAMES.find(t => t.key === panelTF[panelIdx]);
+    document.getElementById('badge-' + panelIdx).textContent = name + ' ' + (tf ? tf.label : '');
+    // Update active button
+    const group = document.getElementById('tf-group-' + panelIdx);
+    if (group) group.querySelectorAll('.tf-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tf === panelTF[panelIdx]);
+    });
+}
+
+function renderPanel(panelIdx) {
+    if (!rawCandles.length) return;
+    // Destroy old chart
+    if (charts[panelIdx]) { charts[panelIdx].chart.remove(); charts[panelIdx] = null; }
+    setLoading(panelIdx, true);
+    charts[panelIdx] = makeChart('chart-' + panelIdx);
+    if (!charts[panelIdx]) return;
+
+    const tfKey = panelTF[panelIdx];
+    const tf = TIMEFRAMES.find(t => t.key === tfKey);
+    let candles, volumes;
+
+    if (tfKey === 'D' || tfKey === '1m') {
+        // D = show all 1m as a single day (just use raw), 1m = raw
+        candles = rawCandles;
+        volumes = rawVolumes;
+    } else {
+        const agg = aggregateBars(rawCandles, rawVolumes, tf.minutes);
+        candles = agg.candles;
+        volumes = agg.volumes;
+    }
+
+    charts[panelIdx].candleSeries.setData(candles);
+    charts[panelIdx].volumeSeries.setData(volumes);
+
+    // MA20 for panel 0
+    if (panelIdx === 0 && candles.length >= 20) {
+        const ma = [];
+        for (let i = 19; i < candles.length; i++) {
+            let s = 0; for (let j = 0; j < 20; j++) s += candles[i-j].close;
+            ma.push({ time: candles[i].time, value: s/20 });
+        }
+        const maLine = charts[panelIdx].chart.addSeries(LightweightCharts.LineSeries, { color: '#facc15', lineWidth: 1, priceLineVisible: false });
+        maLine.setData(ma);
+    }
+
+    charts[panelIdx].chart.timeScale().fitContent();
+    setLoading(panelIdx, false);
+    updateBadge(panelIdx);
+}
+
+function switchTF(panelIdx, tfKey) {
+    panelTF[panelIdx] = tfKey;
+    renderPanel(panelIdx);
+}
+
+function initTFButtons() {
+    for (let i = 0; i < 3; i++) {
+        const group = document.getElementById('tf-group-' + i);
+        if (!group) continue;
+        group.innerHTML = '';
+        TIMEFRAMES.forEach(tf => {
+            const btn = document.createElement('button');
+            btn.className = 'tf-btn' + (panelTF[i] === tf.key ? ' active' : '');
+            btn.textContent = tf.label;
+            btn.dataset.tf = tf.key;
+            btn.onclick = () => switchTF(i, tf.key);
+            group.appendChild(btn);
+        });
+    }
+}
+
 async function loadProduct(product) {
     currentProduct = product;
-    updateBadges(product);
-    
+    document.getElementById('ai-stock-name').textContent = getProductName(product);
+
     // Destroy old
-    Object.keys(charts).forEach(k => { if(charts[k]) { charts[k].chart.remove(); charts[k] = null; } });
-    ['daily','60m','15m'].forEach(id => setLoading(id, true));
-    
-    charts.daily = makeChart('chart-daily');
-    charts['60m'] = makeChart('chart-60m');
-    charts['15m'] = makeChart('chart-15m');
-    
-    // Fetch Underlying Stock Data
+    for (let i = 0; i < 3; i++) { if (charts[i]) { charts[i].chart.remove(); charts[i] = null; } setLoading(i, true); }
+
+    // Fetch 1m data
     const data = await fetchKLineData(product.stockId, DATA_DATE, '1m');
-    
+
     if (data && data.length > 0) {
-        const { candles, volumes } = apiToCandles(data, DATA_DATE);
-        
-        if (charts.daily) {
-            charts.daily.candleSeries.setData(candles);
-            charts.daily.volumeSeries.setData(volumes);
-            // MA20
-            const ma = [];
-            for (let i=19; i<candles.length; i++) {
-                let s=0; for(let j=0; j<20; j++) s+=candles[i-j].close;
-                ma.push({ time: candles[i].time, value: s/20 });
-            }
-            const maLine = charts.daily.chart.addSeries(LightweightCharts.LineSeries, { color: '#facc15', lineWidth: 1, priceLineVisible: false });
-            maLine.setData(ma);
-            charts.daily.chart.timeScale().fitContent();
-        }
-        setLoading('daily', false);
-        
-        const b60 = aggregateBars(candles, volumes, 60);
-        if (charts['60m'] && b60.candles.length) {
-            charts['60m'].candleSeries.setData(b60.candles);
-            charts['60m'].volumeSeries.setData(b60.volumes);
-            charts['60m'].chart.timeScale().fitContent();
-        }
-        setLoading('60m', false);
-        
-        const b15 = aggregateBars(candles, volumes, 15);
-        if (charts['15m'] && b15.candles.length) {
-            charts['15m'].candleSeries.setData(b15.candles);
-            charts['15m'].volumeSeries.setData(b15.volumes);
-            charts['15m'].chart.timeScale().fitContent();
-        }
-        setLoading('15m', false);
-        
-        updateAIPanel(calcCTS(candles));
+        const parsed = apiToCandles(data, DATA_DATE);
+        rawCandles = parsed.candles;
+        rawVolumes = parsed.volumes;
+
+        for (let i = 0; i < 3; i++) renderPanel(i);
+
+        updateAIPanel(calcCTS(rawCandles));
         document.getElementById('data-info').textContent = '數據來源: ' + DATA_DATE + ' 真實行情 (現貨)';
     } else {
-        // Fallback
-        ['daily','60m','15m'].forEach(k => setLoading(k, false));
+        rawCandles = []; rawVolumes = [];
+        for (let i = 0; i < 3; i++) setLoading(i, false);
         document.getElementById('data-info').textContent = '無資料';
     }
     renderList();
@@ -430,6 +488,7 @@ function switchTab(tab) {
         return;
     }
     
+    initTFButtons();
     // Load Futures List
     const prods = await fetchProductList();
     if (prods.length > 0) {
