@@ -67,6 +67,13 @@
         .modal-close { position: absolute; top: 12px; right: 14px; background: none; border: none; color: #6b7280; font-size: 18px; cursor: pointer; }
         .modal-close:hover { color: white; }
         .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); color: #6b7280; font-size: 12px; z-index: 5; }
+        .kbar-count { position: absolute; bottom: 6px; right: 10px; font-size: 10px; color: #4b5563; font-family: monospace; z-index: 10; pointer-events: none; }
+        .ohlc-display { font-size: 10px; font-family: monospace; display: inline-flex; gap: 6px; margin-left: 8px; flex-wrap: wrap; align-items: center; }
+        .ohlc-display span { white-space: nowrap; }
+        .indicator-group { display: flex; gap: 2px; margin-left: 4px; }
+        .ind-btn { background: rgba(31, 41, 55, 0.85); border: 1px solid #374151; color: #6b7280; padding: 2px 5px; border-radius: 3px; font-size: 9px; cursor: pointer; font-family: monospace; transition: all 0.15s; }
+        .ind-btn:hover { color: #d1d5db; border-color: #4b5563; }
+        .ind-btn.active { color: #f97316; border-color: #f97316; background: rgba(249, 115, 22, 0.1); }
         @keyframes flashUp { 0% { background: rgba(239, 68, 68, 0.3); } 100% { background: transparent; } }
         @keyframes flashDown { 0% { background: rgba(34, 197, 94, 0.3); } 100% { background: transparent; } }
         .flash-up { animation: flashUp 0.5s; }
@@ -99,28 +106,35 @@
     <main>
         <div class="panel">
             <div class="panel-header">
-                <span class="badge" id="badge-0">-- 1分K</span>
-                <span class="badge" style="color:#facc15">MA20</span>
+                <span class="badge" id="badge-0">-- 1分K</span>                <div class="ohlc-display" id="ohlc-0"></div>
+                <div class="indicator-group" id="ind-group-0"></div>
                 <div class="tf-group" id="tf-group-0"></div>
             </div>
             <div id="chart-0" class="chart-div"></div>
             <div class="loading" id="loading-0">載入中...</div>
+            <div class="kbar-count" id="kbar-count-0"></div>
         </div>
         <div class="panel">
             <div class="panel-header">
                 <span class="badge" id="badge-1">-- 60分</span>
+                <div class="ohlc-display" id="ohlc-1"></div>
+                <div class="indicator-group" id="ind-group-1"></div>
                 <div class="tf-group" id="tf-group-1"></div>
             </div>
             <div id="chart-1" class="chart-div"></div>
             <div class="loading" id="loading-1">載入中...</div>
+            <div class="kbar-count" id="kbar-count-1"></div>
         </div>
         <div class="panel">
             <div class="panel-header">
                 <span class="badge" id="badge-2">-- 15分</span>
+                <div class="ohlc-display" id="ohlc-2"></div>
+                <div class="indicator-group" id="ind-group-2"></div>
                 <div class="tf-group" id="tf-group-2"></div>
             </div>
             <div id="chart-2" class="chart-div"></div>
             <div class="loading" id="loading-2">載入中...</div>
+            <div class="kbar-count" id="kbar-count-2"></div>
         </div>
         <div class="panel ai-panel" id="ai-panel">
             <div class="ai-title">AI 趨勢評分 <button class="info-btn" onclick="toggleModal(true)" title="算法說明">?</button></div>
@@ -174,6 +188,14 @@ let currentProduct = null;
 let currentTab = 'futures';
 let charts = {};
 let rawCandles = [], rawVolumes = []; // cached 1m data
+// Per-panel candle/volume data (after aggregation)
+let panelCandles = [[], [], []], panelVolumes = [[], [], []];
+// Per-panel active indicators
+let panelIndicators = [{}, {}, {}]; // e.g. { MA5: true, MA10: false, BB20: true, MACD: false }
+// Per-panel indicator series references
+let panelIndSeries = [{}, {}, {}];
+// Daily cache: { symbol: { dateStr: { candles, volumes } } }
+let dailyCache = {};
 
 const TIMEFRAMES = [
     { key: '1m', label: '1分', minutes: 1 },
@@ -186,6 +208,14 @@ const TIMEFRAMES = [
 // Default timeframe per panel index
 const panelTF = ['1m', '60m', '15m'];
 
+const INDICATORS = [
+    { key: 'MA5', label: 'MA5', color: '#ffffff' },
+    { key: 'MA10', label: 'MA10', color: '#3b82f6' },
+    { key: 'MA20', label: 'MA20', color: '#facc15' },
+    { key: 'BB20', label: 'BB', color: '#a78bfa' },
+    { key: 'MACD', label: 'MACD', color: '#f97316' },
+];
+
 // ===== API =====
 async function fetchProductList() {
     try {
@@ -196,7 +226,7 @@ async function fetchProductList() {
         });
         const json = await resp.json();
         if (json.status === 'success') {
-            return json.data.map(p => ({ ...p, price: 0 })); // Add dummy price for UI
+            return json.data.map(p => ({ ...p, price: 0 }));
         }
         return [];
     } catch(e) { console.error(e); return []; }
@@ -227,7 +257,6 @@ function apiToCandles(apiData, dateStr) {
     apiData.forEach(bar => {
         const hh = Math.floor(bar.time / 100);
         const mm = bar.time % 100;
-        // Data time is in Asia/Taipei (UTC+8). Convert to real UTC for correct display.
         const ts = Math.floor(Date.UTC(y, m, d, hh, mm) / 1000) - 8 * 3600;
         const o = bar.open / 100, h = bar.high / 100, l = bar.low / 100, c = bar.close / 100;
         candles.push({ time: ts, open: o, high: h, low: l, close: c });
@@ -258,28 +287,136 @@ function aggregateBars(candles, volumes, minutes) {
     return { candles: aggC, volumes: aggV };
 }
 
+// ===== Daily multi-day: generate trading days (skip weekends) =====
+function getTradingDays(endDateStr, count) {
+    const y = parseInt(endDateStr.substring(0, 4));
+    const m = parseInt(endDateStr.substring(4, 6)) - 1;
+    const d = parseInt(endDateStr.substring(6, 8));
+    const dates = [];
+    let dt = new Date(y, m, d);
+    while (dates.length < count) {
+        const dow = dt.getDay();
+        if (dow !== 0 && dow !== 6) {
+            const yy = dt.getFullYear();
+            const mm = String(dt.getMonth() + 1).padStart(2, '0');
+            const dd = String(dt.getDate()).padStart(2, '0');
+            dates.unshift(`${yy}${mm}${dd}`);
+        }
+        dt.setDate(dt.getDate() - 1);
+    }
+    return dates;
+}
+
+async function fetchDailyData(symbol, endDateStr, numDays) {
+    const tradingDays = getTradingDays(endDateStr, numDays);
+    const dailyCandles = [], dailyVolumes = [];
+    // Fetch in parallel batches of 10
+    for (let b = 0; b < tradingDays.length; b += 10) {
+        const batch = tradingDays.slice(b, b + 10);
+        const results = await Promise.all(batch.map(async dateStr => {
+            const cacheKey = `${symbol}_${dateStr}`;
+            if (dailyCache[cacheKey]) return { dateStr, data: dailyCache[cacheKey] };
+            const data = await fetchKLineData(symbol, dateStr, '1m');
+            const parsed = apiToCandles(data || [], dateStr);
+            dailyCache[cacheKey] = parsed;
+            return { dateStr, data: parsed };
+        }));
+        results.forEach(({ dateStr, data }) => {
+            if (!data.candles.length) return;
+            const c = data.candles, v = data.volumes;
+            const o = c[0].open, cl = c[c.length - 1].close;
+            let hi = -Infinity, lo = Infinity, vol = 0;
+            c.forEach(bar => { hi = Math.max(hi, bar.high); lo = Math.min(lo, bar.low); });
+            v.forEach(bar => { vol += bar.value; });
+            // Use business day format: yyyy-mm-dd string
+            const dayStr = dateStr.substring(0, 4) + '-' + dateStr.substring(4, 6) + '-' + dateStr.substring(6, 8);
+            dailyCandles.push({ time: dayStr, open: o, high: hi, low: lo, close: cl });
+            dailyVolumes.push({ time: dayStr, value: vol, color: cl >= o ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)' });
+        });
+    }
+    return { candles: dailyCandles, volumes: dailyVolumes };
+}
+
+// ===== Indicator Calculations =====
+function calcMA(candles, period) {
+    const result = [];
+    for (let i = period - 1; i < candles.length; i++) {
+        let s = 0;
+        for (let j = 0; j < period; j++) s += candles[i - j].close;
+        result.push({ time: candles[i].time, value: s / period });
+    }
+    return result;
+}
+
+function calcBB(candles, period, mult) {
+    const mid = [], upper = [], lower = [];
+    for (let i = period - 1; i < candles.length; i++) {
+        let s = 0;
+        for (let j = 0; j < period; j++) s += candles[i - j].close;
+        const mean = s / period;
+        let sq = 0;
+        for (let j = 0; j < period; j++) sq += (candles[i - j].close - mean) ** 2;
+        const std = Math.sqrt(sq / period);
+        mid.push({ time: candles[i].time, value: mean });
+        upper.push({ time: candles[i].time, value: mean + mult * std });
+        lower.push({ time: candles[i].time, value: mean - mult * std });
+    }
+    return { mid, upper, lower };
+}
+
+function calcMACD(candles, fast, slow, signal) {
+    // EMA helper
+    function ema(data, period) {
+        const k = 2 / (period + 1);
+        const result = [data[0]];
+        for (let i = 1; i < data.length; i++) result.push(data[i] * k + result[i - 1] * (1 - k));
+        return result;
+    }
+    const closes = candles.map(c => c.close);
+    if (closes.length < slow) return { macd: [], signal: [], histogram: [] };
+    const emaFast = ema(closes, fast);
+    const emaSlow = ema(closes, slow);
+    const macdLine = emaFast.map((v, i) => v - emaSlow[i]);
+    const sigLine = ema(macdLine, signal);
+    const result = { macd: [], signal: [], histogram: [] };
+    // Only output after slow period for meaningful values
+    const start = slow - 1;
+    for (let i = start; i < candles.length; i++) {
+        const t = candles[i].time;
+        const m = macdLine[i], s = sigLine[i], h = m - s;
+        result.macd.push({ time: t, value: m });
+        result.signal.push({ time: t, value: s });
+        result.histogram.push({ time: t, value: h, color: h >= 0 ? 'rgba(239,68,68,0.7)' : 'rgba(34,197,94,0.7)' });
+    }
+    return result;
+}
+
 // ===== Chart Creation (LightweightCharts v5) =====
-function makeChart(containerId) {
+function makeChart(containerId, isDaily) {
     const el = document.getElementById(containerId);
     if (!el) return null;
-    const chart = LightweightCharts.createChart(el, {
+    const opts = {
         layout: { background: { color: '#111827' }, textColor: '#9ca3af' },
         grid: { vertLines: { color: '#1f2937' }, horzLines: { color: '#1f2937' } },
         timeScale: {
             borderColor: '#374151',
-            timeVisible: true,
-            secondsVisible: true,
+            timeVisible: !isDaily,
+            secondsVisible: false,
             rightOffset: 5,
-            tickMarkFormatter: (time) => {
-                const d = new Date(time * 1000);
-                const mm = String(d.getMonth()+1).padStart(2,'0');
-                const dd = String(d.getDate()).padStart(2,'0');
-                const HH = String(d.getHours()).padStart(2,'0');
-                const MM = String(d.getMinutes()).padStart(2,'0');
-                return `${mm}/${dd} ${HH}:${MM}`;
-            },
         },
-        localization: {
+        rightPriceScale: { borderColor: '#374151' },
+        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    };
+    if (!isDaily) {
+        opts.timeScale.tickMarkFormatter = (time) => {
+            const d = new Date(time * 1000);
+            const mm = String(d.getMonth()+1).padStart(2,'0');
+            const dd = String(d.getDate()).padStart(2,'0');
+            const HH = String(d.getHours()).padStart(2,'0');
+            const MM = String(d.getMinutes()).padStart(2,'0');
+            return `${mm}/${dd} ${HH}:${MM}`;
+        };
+        opts.localization = {
             timeFormatter: (time) => {
                 const d = new Date(time * 1000);
                 const mm = String(d.getMonth()+1).padStart(2,'0');
@@ -289,10 +426,9 @@ function makeChart(containerId) {
                 const SS = String(d.getSeconds()).padStart(2,'0');
                 return `${mm}/${dd} ${HH}:${MM}:${SS}`;
             },
-        },
-        rightPriceScale: { borderColor: '#374151' },
-        crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
-    });
+        };
+    }
+    const chart = LightweightCharts.createChart(el, opts);
     const candleSeries = chart.addSeries(LightweightCharts.CandlestickSeries, {
         upColor: '#ef4444', downColor: '#22c55e',
         borderUpColor: '#ef4444', borderDownColor: '#22c55e',
@@ -309,6 +445,206 @@ function makeChart(containerId) {
         chart.applyOptions({ width, height });
     }).observe(el);
     return { chart, candleSeries, volumeSeries };
+}
+
+// ===== OHLC Display =====
+function updateOHLC(panelIdx, bar) {
+    const el = document.getElementById('ohlc-' + panelIdx);
+    if (!el) return;
+    if (!bar) { el.innerHTML = ''; return; }
+    const isUp = bar.close >= bar.open;
+    const color = isUp ? '#ef4444' : '#22c55e';
+    el.innerHTML = `<span style="color:${color}">O:${bar.open.toFixed(2)}</span>` +
+        `<span style="color:${color}">H:${bar.high.toFixed(2)}</span>` +
+        `<span style="color:${color}">L:${bar.low.toFixed(2)}</span>` +
+        `<span style="color:${color}">C:${bar.close.toFixed(2)}</span>` +
+        (bar.volume !== undefined ? `<span style="color:#9ca3af">V:${bar.volume}</span>` : '');
+}
+
+function showLatestOHLC(panelIdx) {
+    const candles = panelCandles[panelIdx];
+    const volumes = panelVolumes[panelIdx];
+    if (!candles || !candles.length) return;
+    const last = candles[candles.length - 1];
+    const lastV = volumes[candles.length - 1];
+    updateOHLC(panelIdx, { ...last, volume: lastV ? lastV.value : 0 });
+}
+
+// ===== Crosshair Sync =====
+let crosshairSyncing = false;
+
+function setupCrosshairSync(panelIdx) {
+    if (!charts[panelIdx]) return;
+    charts[panelIdx].chart.subscribeCrosshairMove(param => {
+        if (crosshairSyncing) return;
+        crosshairSyncing = true;
+        try {
+            // Update OHLC for this panel
+            if (param.time) {
+                const candles = panelCandles[panelIdx];
+                const volumes = panelVolumes[panelIdx];
+                // Find the bar at this time
+                const idx = candles.findIndex(c => {
+                    if (typeof c.time === 'string' && typeof param.time === 'object') {
+                        // business day comparison
+                        const p = param.time;
+                        const cStr = c.time;
+                        const pStr = `${p.year}-${String(p.month).padStart(2,'0')}-${String(p.day).padStart(2,'0')}`;
+                        return cStr === pStr;
+                    }
+                    return c.time === param.time;
+                });
+                if (idx >= 0) {
+                    updateOHLC(panelIdx, { ...candles[idx], volume: volumes[idx] ? volumes[idx].value : 0 });
+                }
+                // Sync other panels
+                for (let i = 0; i < 3; i++) {
+                    if (i === panelIdx || !charts[i]) continue;
+                    const otherCandles = panelCandles[i];
+                    if (!otherCandles || !otherCandles.length) continue;
+                    // Find closest time in other panel
+                    let targetTime = param.time;
+                    if (typeof param.time === 'object' && typeof otherCandles[0].time === 'string') {
+                        // business day obj -> string
+                        targetTime = `${param.time.year}-${String(param.time.month).padStart(2,'0')}-${String(param.time.day).padStart(2,'0')}`;
+                    } else if (typeof param.time !== 'object' && typeof otherCandles[0].time === 'string') {
+                        // Unix ts -> find closest by converting
+                        // Skip sync between incompatible time formats
+                        continue;
+                    } else if (typeof param.time === 'object' && typeof otherCandles[0].time === 'number') {
+                        // business day -> can't sync to intraday easily
+                        continue;
+                    }
+                    // Find closest
+                    let closest = otherCandles[0];
+                    let minDiff = Infinity;
+                    if (typeof targetTime === 'number') {
+                        for (const c of otherCandles) {
+                            const diff = Math.abs(c.time - targetTime);
+                            if (diff < minDiff) { minDiff = diff; closest = c; }
+                        }
+                    } else {
+                        // String comparison for daily
+                        closest = otherCandles.find(c => c.time === targetTime) || otherCandles[otherCandles.length - 1];
+                    }
+                    try {
+                        charts[i].chart.setCrosshairPosition(closest.close, closest.time, charts[i].candleSeries);
+                    } catch(e) {}
+                    // Update OHLC for synced panel
+                    const cIdx = otherCandles.indexOf(closest);
+                    if (cIdx >= 0) {
+                        updateOHLC(i, { ...closest, volume: panelVolumes[i][cIdx] ? panelVolumes[i][cIdx].value : 0 });
+                    }
+                }
+            } else {
+                // Mouse left - clear crosshairs and show latest OHLC
+                for (let i = 0; i < 3; i++) {
+                    if (i === panelIdx || !charts[i]) continue;
+                    try { charts[i].chart.clearCrosshairPosition(); } catch(e) {}
+                    showLatestOHLC(i);
+                }
+                showLatestOHLC(panelIdx);
+            }
+        } finally {
+            crosshairSyncing = false;
+        }
+    });
+}
+
+// ===== Indicator rendering =====
+function renderIndicators(panelIdx) {
+    if (!charts[panelIdx]) return;
+    const candles = panelCandles[panelIdx];
+    if (!candles.length) return;
+    const active = panelIndicators[panelIdx];
+    const series = panelIndSeries[panelIdx];
+    const chart = charts[panelIdx].chart;
+
+    // Remove old indicator series
+    Object.keys(series).forEach(k => {
+        if (Array.isArray(series[k])) {
+            series[k].forEach(s => { try { chart.removeSeries(s); } catch(e) {} });
+        } else {
+            try { chart.removeSeries(series[k]); } catch(e) {}
+        }
+    });
+    panelIndSeries[panelIdx] = {};
+
+    // MA lines
+    ['MA5', 'MA10', 'MA20'].forEach(key => {
+        if (!active[key]) return;
+        const period = parseInt(key.replace('MA', ''));
+        const ind = INDICATORS.find(i => i.key === key);
+        const data = calcMA(candles, period);
+        if (data.length) {
+            const s = chart.addSeries(LightweightCharts.LineSeries, {
+                color: ind.color, lineWidth: 1, priceLineVisible: false, lastValueVisible: false,
+            });
+            s.setData(data);
+            panelIndSeries[panelIdx][key] = s;
+        }
+    });
+
+    // Bollinger Bands
+    if (active.BB20) {
+        const bb = calcBB(candles, 20, 2);
+        if (bb.mid.length) {
+            const sMid = chart.addSeries(LightweightCharts.LineSeries, { color: '#a78bfa', lineWidth: 1, priceLineVisible: false, lastValueVisible: false });
+            const sUp = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(167,139,250,0.4)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+            const sLo = chart.addSeries(LightweightCharts.LineSeries, { color: 'rgba(167,139,250,0.4)', lineWidth: 1, lineStyle: 2, priceLineVisible: false, lastValueVisible: false });
+            sMid.setData(bb.mid); sUp.setData(bb.upper); sLo.setData(bb.lower);
+            panelIndSeries[panelIdx].BB20 = [sMid, sUp, sLo];
+        }
+    }
+
+    // MACD
+    if (active.MACD) {
+        const macd = calcMACD(candles, 12, 26, 9);
+        if (macd.histogram.length) {
+            const sHist = chart.addSeries(LightweightCharts.HistogramSeries, {
+                priceScaleId: 'macd', priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+            });
+            chart.priceScale('macd').applyOptions({ scaleMargins: { top: 0.7, bottom: 0 } });
+            sHist.setData(macd.histogram);
+            const sMacd = chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#f97316', lineWidth: 1, priceScaleId: 'macd', priceLineVisible: false, lastValueVisible: false,
+            });
+            sMacd.setData(macd.macd);
+            const sSig = chart.addSeries(LightweightCharts.LineSeries, {
+                color: '#38bdf8', lineWidth: 1, priceScaleId: 'macd', priceLineVisible: false, lastValueVisible: false,
+            });
+            sSig.setData(macd.signal);
+            panelIndSeries[panelIdx].MACD = [sHist, sMacd, sSig];
+        }
+    }
+}
+
+function initIndicatorButtons() {
+    for (let i = 0; i < 3; i++) {
+        const group = document.getElementById('ind-group-' + i);
+        if (!group) continue;
+        group.innerHTML = '';
+        INDICATORS.forEach(ind => {
+            const btn = document.createElement('button');
+            btn.className = 'ind-btn' + (panelIndicators[i][ind.key] ? ' active' : '');
+            btn.textContent = ind.label;
+            btn.dataset.ind = ind.key;
+            btn.onclick = () => {
+                panelIndicators[i][ind.key] = !panelIndicators[i][ind.key];
+                btn.classList.toggle('active', panelIndicators[i][ind.key]);
+                renderIndicators(i);
+            };
+            group.appendChild(btn);
+        });
+    }
+}
+
+function updateIndButtons(panelIdx) {
+    const group = document.getElementById('ind-group-' + panelIdx);
+    if (!group) return;
+    group.querySelectorAll('.ind-btn').forEach(btn => {
+        btn.classList.toggle('active', !!panelIndicators[panelIdx][btn.dataset.ind]);
+    });
 }
 
 // ===== UI Logic =====
@@ -352,52 +688,64 @@ function updateBadge(panelIdx) {
     const name = currentProduct ? getProductName(currentProduct) : '--';
     const tf = TIMEFRAMES.find(t => t.key === panelTF[panelIdx]);
     document.getElementById('badge-' + panelIdx).textContent = name + ' ' + (tf ? tf.label : '');
-    // Update active button
     const group = document.getElementById('tf-group-' + panelIdx);
     if (group) group.querySelectorAll('.tf-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.tf === panelTF[panelIdx]);
     });
 }
 
-function renderPanel(panelIdx) {
-    if (!rawCandles.length) return;
+function updateKBarCount(panelIdx) {
+    const el = document.getElementById('kbar-count-' + panelIdx);
+    if (el) el.textContent = '共 ' + panelCandles[panelIdx].length + ' 根';
+}
+
+async function renderPanel(panelIdx) {
+    if (!rawCandles.length && panelTF[panelIdx] !== 'D') return;
     // Destroy old chart
     if (charts[panelIdx]) { charts[panelIdx].chart.remove(); charts[panelIdx] = null; }
+    panelIndSeries[panelIdx] = {};
     setLoading(panelIdx, true);
-    charts[panelIdx] = makeChart('chart-' + panelIdx);
-    if (!charts[panelIdx]) return;
 
     const tfKey = panelTF[panelIdx];
-    const tf = TIMEFRAMES.find(t => t.key === tfKey);
+    const isDaily = tfKey === 'D';
+    charts[panelIdx] = makeChart('chart-' + panelIdx, isDaily);
+    if (!charts[panelIdx]) return;
+
     let candles, volumes;
 
-    if (tfKey === 'D' || tfKey === '1m') {
-        // D = show all 1m as a single day (just use raw), 1m = raw
+    if (isDaily) {
+        // Fetch multi-day data
+        const symbol = currentProduct.stockId;
+        const result = await fetchDailyData(symbol, DATA_DATE, 60);
+        candles = result.candles;
+        volumes = result.volumes;
+    } else if (tfKey === '1m') {
         candles = rawCandles;
         volumes = rawVolumes;
     } else {
+        const tf = TIMEFRAMES.find(t => t.key === tfKey);
         const agg = aggregateBars(rawCandles, rawVolumes, tf.minutes);
         candles = agg.candles;
         volumes = agg.volumes;
     }
 
+    panelCandles[panelIdx] = candles;
+    panelVolumes[panelIdx] = volumes;
+
     charts[panelIdx].candleSeries.setData(candles);
     charts[panelIdx].volumeSeries.setData(volumes);
 
-    // MA20 for panel 0
-    if (panelIdx === 0 && candles.length >= 20) {
-        const ma = [];
-        for (let i = 19; i < candles.length; i++) {
-            let s = 0; for (let j = 0; j < 20; j++) s += candles[i-j].close;
-            ma.push({ time: candles[i].time, value: s/20 });
-        }
-        const maLine = charts[panelIdx].chart.addSeries(LightweightCharts.LineSeries, { color: '#facc15', lineWidth: 1, priceLineVisible: false });
-        maLine.setData(ma);
-    }
+    // Render active indicators
+    renderIndicators(panelIdx);
+
+    // Setup crosshair sync
+    setupCrosshairSync(panelIdx);
 
     charts[panelIdx].chart.timeScale().fitContent();
     setLoading(panelIdx, false);
     updateBadge(panelIdx);
+    updateKBarCount(panelIdx);
+    showLatestOHLC(panelIdx);
 }
 
 function switchTF(panelIdx, tfKey) {
@@ -426,7 +774,7 @@ async function loadProduct(product) {
     document.getElementById('ai-stock-name').textContent = getProductName(product);
 
     // Destroy old
-    for (let i = 0; i < 3; i++) { if (charts[i]) { charts[i].chart.remove(); charts[i] = null; } setLoading(i, true); }
+    for (let i = 0; i < 3; i++) { if (charts[i]) { charts[i].chart.remove(); charts[i] = null; } panelIndSeries[i] = {}; setLoading(i, true); }
 
     // Fetch 1m data
     const data = await fetchKLineData(product.stockId, DATA_DATE, '1m');
@@ -436,7 +784,7 @@ async function loadProduct(product) {
         rawCandles = parsed.candles;
         rawVolumes = parsed.volumes;
 
-        for (let i = 0; i < 3; i++) renderPanel(i);
+        for (let i = 0; i < 3; i++) await renderPanel(i);
 
         updateAIPanel(calcCTS(rawCandles));
         document.getElementById('data-info').textContent = '數據來源: ' + DATA_DATE + ' 真實行情 (現貨)';
@@ -489,13 +837,13 @@ function switchTab(tab) {
     }
     
     initTFButtons();
+    initIndicatorButtons();
     // Load Futures List
     const prods = await fetchProductList();
     if (prods.length > 0) {
         futuresList = prods;
         loadProduct(futuresList[0]);
     } else {
-        // Fallback if API fails
         futuresList = [
             { stockId: '2330', futureId: 'CDFC6', name: '台積電期03' },
             { stockId: '2317', futureId: 'DHFC6', name: '鴻海期03' }
