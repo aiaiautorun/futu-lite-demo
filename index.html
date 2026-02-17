@@ -307,18 +307,32 @@ function getTradingDays(endDateStr, count) {
     return dates;
 }
 
-async function fetchDailyData(symbol, endDateStr, numDays) {
+async function fetchDailyData(symbol, endDateStr, numDays, onProgress) {
     const tradingDays = getTradingDays(endDateStr, numDays);
-    const dailyCandles = [], dailyVolumes = [];
-    // Fetch all days in parallel (cached results return instantly)
-    const results = await Promise.all(tradingDays.map(async dateStr => {
-        const cacheKey = `${symbol}_${dateStr}`;
-        if (dailyCache[cacheKey]) return { dateStr, data: dailyCache[cacheKey] };
-        const data = await fetchKLineData(symbol, dateStr, '1m');
-        const parsed = apiToCandles(data || [], dateStr);
-        dailyCache[cacheKey] = parsed;
-        return { dateStr, data: parsed };
-    }));
+    // Concurrency-limited fetch (3 at a time to avoid overwhelming server)
+    const results = [];
+    let done = 0;
+    const concurrency = 3;
+    let idx = 0;
+    async function next() {
+        while (idx < tradingDays.length) {
+            const i = idx++;
+            const dateStr = tradingDays[i];
+            const cacheKey = `${symbol}_${dateStr}`;
+            let data;
+            if (dailyCache[cacheKey]) {
+                data = dailyCache[cacheKey];
+            } else {
+                const raw = await fetchKLineData(symbol, dateStr, '1m');
+                data = apiToCandles(raw || [], dateStr);
+                dailyCache[cacheKey] = data;
+            }
+            results[i] = { dateStr, data };
+            done++;
+            if (onProgress) onProgress(done, tradingDays.length);
+        }
+    }
+    await Promise.all(Array.from({length: Math.min(concurrency, tradingDays.length)}, () => next()));
     results.forEach(({ dateStr, data }) => {
         if (!data.candles.length) return;
         const c = data.candles, v = data.volumes;
@@ -710,7 +724,10 @@ async function renderPanel(panelIdx) {
     if (isDaily) {
         // Fetch multi-day data
         const symbol = currentProduct.stockId;
-        const result = await fetchDailyData(symbol, DATA_DATE, 20);
+        const loadEl = document.getElementById('loading-' + panelIdx);
+        const result = await fetchDailyData(symbol, DATA_DATE, 10, (done, total) => {
+            if (loadEl) loadEl.textContent = `載入日線 ${done}/${total}...`;
+        });
         candles = result.candles;
         volumes = result.volumes;
     } else if (tfKey === '1m') {
