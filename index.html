@@ -174,7 +174,7 @@ function toggleModal(show) { document.getElementById('algo-modal').classList.tog
 <script>
 // ===== Config =====
 const API_BASE = 'https://hts2.tail45e5a8.ts.net/api';
-const DATA_DATE = '20260211';
+let DATA_DATE = null; // will be resolved dynamically
 
 // Static fallback lists
 const twStocks = [
@@ -247,6 +247,42 @@ async function fetchKLineData(symbol, date, type) {
     } catch (e) {
         return null;
     }
+}
+
+// ===== Resolve DATA_DATE dynamically =====
+async function resolveDataDate() {
+    // Try fetching with "latest" first (if backend supports actualDate)
+    try {
+        const resp = await fetch(API_BASE, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ apiType: 'getKLine', symbol: '2330', date: 'latest', type: '1m' })
+        });
+        const json = await resp.json();
+        if (json.actualDate) return json.actualDate;
+        if (json.status === 'success' && json.data && json.data.length > 0) {
+            // backend returned data for "latest" but no actualDate — need fallback
+        }
+    } catch(e) {}
+
+    // Fallback: try today, then scan backwards up to 10 days
+    const now = new Date();
+    // Use Asia/Taipei timezone
+    const taipeiOffset = 8 * 60;
+    const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+    const taipeiDate = new Date(utcMs + taipeiOffset * 60000);
+    
+    for (let i = 0; i < 10; i++) {
+        const dt = new Date(taipeiDate);
+        dt.setDate(dt.getDate() - i);
+        const dow = dt.getDay();
+        if (dow === 0 || dow === 6) continue;
+        const dateStr = dt.getFullYear() + String(dt.getMonth()+1).padStart(2,'0') + String(dt.getDate()).padStart(2,'0');
+        const data = await fetchKLineData('2330', dateStr, '1m');
+        if (data && data.length > 0) return dateStr;
+    }
+    // Ultimate fallback
+    return '20260211';
 }
 
 // ===== Convert API data to chart format =====
@@ -704,7 +740,7 @@ function updateIndButtons(panelIdx) {
 }
 
 // ===== UI Logic =====
-function calcCTS(candles) {
+function calcCTS(candles, volumes) {
     if (!candles || candles.length < 25) return { score: 50, momentum: 50, trend: 50, volume: 50 };
     const closes = candles.map(c => c.close);
     const n = closes.length;
@@ -712,9 +748,43 @@ function calcCTS(candles) {
     const ma5 = ma(5), ma10 = ma(10), last = closes[n-1];
     const momentum = Math.round(50 + 50 * Math.tanh((last - ma5)/ma5*50));
     const trend = Math.round(50 + 50 * Math.tanh((last - ma10)/ma10*35));
-    const volume = Math.round(45 + Math.random()*30);
-    const score = Math.round(0.4*momentum + 0.4*trend + 0.2*volume);
-    return { score, momentum, trend, volume };
+    // Volume score: ratio of recent 5-bar avg volume vs 20-bar avg volume
+    let volScore = 50;
+    if (volumes && volumes.length >= 20) {
+        const vn = volumes.length;
+        let sum5 = 0, sum20 = 0;
+        for (let i = vn - 5; i < vn; i++) sum5 += (volumes[i].value || 0);
+        for (let i = vn - 20; i < vn; i++) sum20 += (volumes[i].value || 0);
+        const avg5 = sum5 / 5, avg20 = sum20 / 20;
+        const ratio = avg20 > 0 ? avg5 / avg20 : 1;
+        volScore = Math.round(Math.min(100, Math.max(0, 50 * ratio)));
+    }
+    const score = Math.round(0.4*momentum + 0.4*trend + 0.2*volScore);
+    return { score, momentum, trend, volume: volScore };
+}
+
+// Multi-timeframe CTS resonance
+function calcMultiTFCTS() {
+    const results = [];
+    for (let i = 0; i < 3; i++) {
+        results.push(calcCTS(panelCandles[i], panelVolumes[i]));
+    }
+    const directions = results.map(r => r.score >= 50 ? 1 : -1); // 1=bull, -1=bear
+    const allSame = directions.every(d => d === directions[0]);
+
+    // Use panel 0 (1m) as base score
+    let baseScore = results[0].score;
+    let resonanceLabel = '';
+    const icons = directions.map(d => d === 1 ? '🔴' : '🟢');
+
+    if (allSame) {
+        baseScore = Math.min(100, Math.round(baseScore * 1.2));
+        resonanceLabel = icons.join('') + ' 三週期共振';
+    } else {
+        baseScore = Math.round(baseScore * 0.8);
+        resonanceLabel = icons.join('') + ' 方向分歧';
+    }
+    return { score: baseScore, momentum: results[0].momentum, trend: results[0].trend, volume: results[0].volume, resonanceLabel, panelScores: results };
 }
 
 function updateAIPanel(cts) {
@@ -729,6 +799,15 @@ function updateAIPanel(cts) {
         lbl.textContent = v>=65?'強勢':v>=40?'中性':'偏弱';
         lbl.style.color = v>=65?'#ef4444':v>=40?'#eab308':'#22c55e';
     });
+    // Show resonance label
+    let resEl = document.getElementById('ai-resonance');
+    if (!resEl) {
+        resEl = document.createElement('div');
+        resEl.id = 'ai-resonance';
+        resEl.style.cssText = 'margin-top:10px;font-size:14px;font-weight:bold;letter-spacing:1px;';
+        document.getElementById('ai-score').after(resEl);
+    }
+    resEl.textContent = cts.resonanceLabel || '';
 }
 
 function getProductName(product) {
@@ -821,6 +900,11 @@ async function renderPanel(panelIdx) {
     updateBadge(panelIdx);
     updateKBarCount(panelIdx);
     showLatestOHLC(panelIdx);
+
+    // Recalculate multi-TF resonance after any panel render
+    if (panelCandles[0].length && panelCandles[1].length && panelCandles[2].length) {
+        updateAIPanel(calcMultiTFCTS());
+    }
 }
 
 function switchTF(panelIdx, tfKey) {
@@ -855,6 +939,12 @@ async function loadProduct(product) {
     // Destroy old
     for (let i = 0; i < 3; i++) { if (charts[i]) { charts[i].chart.remove(); charts[i] = null; } panelIndSeries[i] = {}; setLoading(i, true); }
 
+    // Resolve date dynamically if not yet done
+    if (!DATA_DATE) {
+        document.getElementById('data-info').textContent = '偵測最新交易日...';
+        DATA_DATE = await resolveDataDate();
+    }
+
     // Fetch 1m data
     const data = await fetchKLineData(product.stockId, DATA_DATE, '1m');
 
@@ -865,7 +955,7 @@ async function loadProduct(product) {
 
         for (let i = 0; i < 3; i++) await renderPanel(i);
 
-        updateAIPanel(calcCTS(rawCandles));
+        updateAIPanel(calcMultiTFCTS());
         document.getElementById('data-info').textContent = '數據來源: ' + DATA_DATE + ' 真實行情 (現貨)';
     } else {
         rawCandles = []; rawVolumes = [];
