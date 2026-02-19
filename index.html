@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>KStation — 智能交易工作站</title>
     <script src="lightweight-charts.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@stomp/stompjs@7/bundles/stomp.umd.min.js"></script>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
         body { background-color: #0b0f19; color: #e5e7eb; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
@@ -1020,6 +1021,138 @@ function switchTab(tab) {
         loadProduct(futuresList[0]);
     }
 })();
+
+// ===== Real-time STOMP Subscription =====
+const STOMP_URL = 'wss://hts2.tail45e5a8.ts.net/ws';
+let stompClient = null;
+
+function initStomp() {
+    const dotEl = document.querySelector('.dot');
+    const statusEl = document.querySelector('.status');
+
+    stompClient = new StompJs.Client({
+        brokerURL: STOMP_URL,
+        connectHeaders: { login: 'guest', passcode: 'guest' },
+        reconnectDelay: 3000,
+        heartbeatIncoming: 10000,
+        heartbeatOutgoing: 10000,
+        debug: (str) => { if (str.includes('ERROR')) console.error('[STOMP]', str); },
+    });
+
+    stompClient.onConnect = () => {
+        console.log('[STOMP] 已連線');
+        dotEl.style.background = '#22c55e';
+        dotEl.style.boxShadow = '0 0 5px #22c55e';
+        statusEl.querySelector('.dot + *') || statusEl.lastChild;
+
+        // 訂閱所有 quote.*
+        stompClient.subscribe('/exchange/topic_events/quote.*', (msg) => {
+            try {
+                const tick = JSON.parse(msg.body);
+                handleTick(tick);
+            } catch(e) {
+                console.error('[STOMP] parse error', e);
+            }
+        });
+    };
+
+    stompClient.onDisconnect = () => {
+        console.log('[STOMP] 斷線');
+        dotEl.style.background = '#ef4444';
+        dotEl.style.boxShadow = '0 0 5px #ef4444';
+    };
+
+    stompClient.onStompError = (frame) => {
+        console.error('[STOMP] Error:', frame.headers['message'], frame.body);
+    };
+
+    stompClient.onWebSocketClose = () => {
+        dotEl.style.background = '#eab308';
+        dotEl.style.boxShadow = '0 0 5px #eab308';
+    };
+
+    stompClient.activate();
+}
+
+function handleTick(tick) {
+    // 1. Update watchlist price
+    updateWatchlistPrice(tick);
+
+    // 2. If current product matches, update charts
+    if (!currentProduct) return;
+    const currentSymbol = currentProduct.stockId;
+    if (tick.symbol !== currentSymbol) return;
+
+    // Build 1-minute candle from tick
+    const tickTime = tick.time;
+    const minuteSlot = Math.floor(tickTime / 60) * 60;
+
+    for (let i = 0; i < 3; i++) {
+        if (!charts[i] || !panelCandles[i].length) continue;
+        const tf = panelTF[i];
+        if (tf === 'D') continue; // skip daily for now
+
+        const tfMinutes = TIMEFRAMES.find(t => t.key === tf)?.minutes || 1;
+        const slot = Math.floor(tickTime / (tfMinutes * 60)) * (tfMinutes * 60);
+        const candles = panelCandles[i];
+        const volumes = panelVolumes[i];
+        const lastCandle = candles[candles.length - 1];
+
+        if (lastCandle && lastCandle.time === slot) {
+            // Update existing candle
+            lastCandle.high = Math.max(lastCandle.high, tick.price);
+            lastCandle.low = Math.min(lastCandle.low, tick.price);
+            lastCandle.close = tick.price;
+            const lastVol = volumes[volumes.length - 1];
+            lastVol.value += tick.volume;
+            lastVol.color = lastCandle.close >= lastCandle.open ? 'rgba(239,68,68,0.5)' : 'rgba(34,197,94,0.5)';
+
+            charts[i].candleSeries.update(lastCandle);
+            charts[i].volumeSeries.update(lastVol);
+        } else if (!lastCandle || slot > lastCandle.time) {
+            // New candle
+            const newCandle = { time: slot, open: tick.price, high: tick.price, low: tick.price, close: tick.price };
+            const newVol = { time: slot, value: tick.volume, color: 'rgba(239,68,68,0.5)' };
+            candles.push(newCandle);
+            volumes.push(newVol);
+
+            charts[i].candleSeries.update(newCandle);
+            charts[i].volumeSeries.update(newVol);
+        }
+
+        // Update OHLC display
+        const last = candles[candles.length - 1];
+        const lastV = volumes[volumes.length - 1];
+        updateOHLC(i, { ...last, volume: lastV ? lastV.value : 0 });
+    }
+
+    // Update kbar count
+    for (let i = 0; i < 3; i++) updateKBarCount(i);
+}
+
+function updateWatchlistPrice(tick) {
+    const rows = document.querySelectorAll('.stock-row');
+    const list = currentTab === 'futures' ? futuresList : twStocks;
+    rows.forEach((row, idx) => {
+        if (idx >= list.length) return;
+        const item = list[idx];
+        if (item.stockId !== tick.symbol) return;
+
+        const priceEl = row.querySelector('.price');
+        if (!priceEl) return;
+        const oldPrice = parseFloat(priceEl.textContent) || 0;
+        priceEl.textContent = tick.price.toFixed(2);
+        priceEl.className = 'price ' + (tick.price >= oldPrice ? 'text-up' : 'text-down');
+
+        // Flash effect
+        row.classList.remove('flash-up', 'flash-down');
+        void row.offsetWidth; // reflow
+        row.classList.add(tick.price >= oldPrice ? 'flash-up' : 'flash-down');
+    });
+}
+
+// Start STOMP after page load
+initStomp();
 </script>
 </body>
 </html>
